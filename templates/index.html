@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Outdoor Plant Upkeep Tracker</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; background: #f5f8f3; color: #223; }
+    .container { max-width: 980px; margin: 0 auto; padding: 1rem; }
+    .card { background: white; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    input, textarea, select, button { width: 100%; padding: 0.55rem; margin-top: 0.4rem; margin-bottom: 0.8rem; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .task-due { border-left: 4px solid #d9534f; padding-left: 0.6rem; margin: 0.5rem 0; }
+    .task-future { border-left: 4px solid #5cb85c; padding-left: 0.6rem; margin: 0.5rem 0; }
+    .small { color: #666; font-size: 0.9rem; }
+    @media (max-width: 700px){ .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Outdoor Plant Upkeep Tracker</h1>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <div class="card">{{ messages[-1] }}</div>
+      {% endif %}
+    {% endwith %}
+
+    <div class="grid">
+      <div class="card">
+        <h2>Add Plant</h2>
+        <form method="post" action="{{ url_for('add_plant') }}">
+          <label>Name</label>
+          <input name="name" required />
+          <label>Location</label>
+          <input name="location" placeholder="Front bed, patio, etc." />
+          <label>Notes</label>
+          <textarea name="notes" rows="3"></textarea>
+          <button type="submit">Save Plant</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2>Schedule Activity</h2>
+        <form method="post" action="{{ url_for('add_task') }}">
+          <label>Plant</label>
+          <select name="plant_id" required>
+            {% for plant in plants %}<option value="{{ plant.id }}">{{ plant.name }}</option>{% endfor %}
+          </select>
+          <label>Activity</label>
+          <input name="activity" placeholder="Fertilize / prune / mulch" required />
+          <label>Due date</label>
+          <input type="date" name="due_date" required />
+          <button type="submit">Schedule</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Due Now ({{ due_tasks|length }})</h2>
+      {% if due_tasks %}
+        {% for task in due_tasks %}
+          <div class="task-due">
+            <strong>{{ task.plant.name }}</strong> — {{ task.activity }}
+            <div class="small">Due {{ task.due_date.isoformat() }}</div>
+            <form method="post" action="{{ url_for('complete_task', task_id=task.id) }}">
+              <button type="submit">Mark Complete</button>
+            </form>
+          </div>
+        {% endfor %}
+      {% else %}
+        <p>No due activities today.</p>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h2>All Plants</h2>
+      {% for plant in plants %}
+        <div>
+          <strong>{{ plant.name }}</strong> <span class="small">{{ plant.location }}</span>
+          <div class="small">{{ plant.notes }}</div>
+          {% for task in plant.tasks %}
+            <div class="{{ 'task-due' if task.completed_on is none and task.due_date <= today else 'task-future' }}">
+              {{ task.activity }} - due {{ task.due_date.isoformat() }}
+              {% if task.completed_on %}(completed {{ task.completed_on.isoformat() }}){% endif %}
+            </div>
+          {% endfor %}
+        </div><hr/>
+      {% else %}
+        <p>No plants added yet.</p>
+      {% endfor %}
+    </div>
+  </div>
+</body>
+</html>
