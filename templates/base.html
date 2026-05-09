@@ -58,6 +58,7 @@
       <nav class="nav">
         <a class="{{ 'active' if active_page == 'add' else '' }}" href="{{ url_for('add_page') }}">Add Plants & Activities</a>
         <a class="{{ 'active' if active_page == 'upcoming' else '' }}" href="{{ url_for('upcoming_page') }}">Upcoming & History</a>
+        <a class="{{ 'active' if active_page == 'settings' else '' }}" href="{{ url_for('settings_page') }}">Settings</a>
       </nav>
     </div>
 
