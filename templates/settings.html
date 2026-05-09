@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="card">
+  <h2>Notification & SMTP Settings</h2>
+  <form method="post" action="{{ url_for('settings_page') }}">
+    <label>Reminder recipient email</label>
+    <input name="notify_email_to" type="email" value="{{ settings.notify_email_to or '' }}" />
+    <label>Reminder sender email</label>
+    <input name="notify_email_from" type="email" value="{{ settings.notify_email_from or '' }}" />
+    <label>SMTP host</label>
+    <input name="smtp_host" value="{{ settings.smtp_host or '' }}" placeholder="smtp.example.com" />
+    <label>SMTP port</label>
+    <input name="smtp_port" type="number" value="{{ settings.smtp_port or 587 }}" />
+    <label>SMTP username</label>
+    <input name="smtp_user" value="{{ settings.smtp_user or '' }}" />
+    <label>SMTP password</label>
+    <input name="smtp_password" type="password" value="{{ settings.smtp_password or '' }}" />
+    <button type="submit">Save Settings</button>
+  </form>
+  <p class="small">These values override environment variables when provided.</p>
+</div>
+{% endblock %}
