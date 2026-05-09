@@ -51,7 +51,7 @@
       {% if plant.image_path %}
         <div><img src="{{ url_for('static', filename=plant.image_path) }}" alt="{{ plant.name }} photo" class="plant-photo" /></div>
       {% endif %}
-      <div class="button-row">
+      <div class="button-row button-row-actions">
         <form method="post" action="{{ url_for('archive_plant', plant_id=plant.id) }}" onsubmit="return confirm('Archive this plant and hide it from active schedules?')">
           <button class="btn btn-archive" type="submit">🗂️ Archive Plant</button>
         </form>
