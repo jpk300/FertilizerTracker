@@ -32,9 +32,12 @@
 {% endif %}
 {% for plant in plants %}
 {% set summary = care_summaries[plant.id] %}
-<div class="task">
-<strong>{{ plant.name }}</strong> <span class="small">{{ plant.location }}</span>
-<div class="small">Status: <span class="badge">{{ summary.status }}</span> · Last done: {{ summary.last_done.isoformat() if summary.last_done else '—' }} · Next due: {{ summary.next_due.isoformat() if summary.next_due else '—' }}</div>
+<details class="task task-collapsible" {% if loop.first %}open{% endif %}>
+<summary>
+  <strong>{{ plant.name }}</strong> <span class="small">{{ plant.location }}</span>
+  <div class="small">Status: <span class="badge">{{ summary.status }}</span> · Last done: {{ summary.last_done.isoformat() if summary.last_done else '—' }} · Next due: {{ summary.next_due.isoformat() if summary.next_due else '—' }}</div>
+</summary>
+<div class="task-content">
 {% if plant.image_path %}<div><img src="{{ url_for('static', filename=plant.image_path) }}" class="plant-photo"/></div>{% endif %}
 <form method="post" action="{{ url_for('edit_plant', plant_id=plant.id) }}" enctype="multipart/form-data">
 <input name="name" value="{{ plant.name }}" required />
@@ -47,6 +50,7 @@
 </form>
 {% if plant.photos %}<div class="small">Timeline:</div>{% for photo in (plant.photos|sort(attribute='taken_on', reverse=True))[:5] %}<img src="{{ url_for('static', filename=photo.image_path) }}" class="plant-photo" title="{{ photo.taken_on.isoformat() }} {{ photo.note or '' }}" />{% endfor %}{% endif %}
 </div>
+</details>
 {% endfor %}
 </div>
 {% endblock %}
