@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="grid">
+  <div class="card">
+    <h2>Add Plant</h2>
+    <form method="post" action="{{ url_for('add_plant') }}">
+      <label>Name</label>
+      <input name="name" required />
+      <label>Location</label>
+      <input name="location" placeholder="Front bed, patio, windowsill" />
+      <label>Notes</label>
+      <textarea name="notes" rows="4" placeholder="Sun preference, soil notes, etc."></textarea>
+      <button type="submit">Save Plant</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Schedule Activity</h2>
+    <form method="post" action="{{ url_for('add_task') }}">
+      <label>Plant</label>
+      <select name="plant_id" required>
+        {% for plant in plants %}<option value="{{ plant.id }}">{{ plant.name }}</option>{% endfor %}
+      </select>
+      <label>Activity</label>
+      <input name="activity" placeholder="Fertilize / prune / mulch" required />
+      <label>Due date</label>
+      <input type="date" name="due_date" required />
+      <label>Recurring schedule</label>
+      <select name="recurrence">
+        <option value="none">One-time</option>
+        <option value="7">Every week</option>
+        <option value="14">Every 2 weeks</option>
+        <option value="30">Monthly (30 days)</option>
+      </select>
+      <button type="submit">Schedule Activity</button>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Plant List</h2>
+  {% for plant in plants %}
+    <p><strong>{{ plant.name }}</strong> <span class="small">{{ plant.location }}</span><br/><span class="small">{{ plant.notes }}</span></p>
+  {% else %}<p class="muted">No plants added yet.</p>{% endfor %}
+</div>
+{% endblock %}
