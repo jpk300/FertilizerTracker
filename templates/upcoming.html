@@ -5,7 +5,7 @@
   {% for task in open_tasks %}
     <div class="task {{ 'overdue' if task.due_date <= today else '' }}">
       <strong>{{ task.plant.name }}</strong> — {{ task.activity }}
-      <div class="small">Due {{ task.due_date.isoformat() }}{% if task.recurrence_days %} · repeats every {{ task.recurrence_days }} day(s){% endif %}</div>
+      <div class="small">Due {{ task.due_date.isoformat() }}{% if task.recurrence_days %} · repeats every {{ task.recurrence_days }} day(s){% endif %}{% if task.start_date or task.end_date %} · active {{ task.start_date.isoformat() if task.start_date else 'any time' }} to {{ task.end_date.isoformat() if task.end_date else 'open-ended' }}{% endif %}</div>
       <form method="post" action="{{ url_for('complete_task', task_id=task.id) }}">
         <button type="submit">Mark Complete</button>
       </form>

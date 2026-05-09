@@ -29,6 +29,18 @@ class Task(db.Model):
     due_date = db.Column(db.Date, nullable=False)
     completed_on = db.Column(db.Date, nullable=True)
     recurrence_days = db.Column(db.Integer, nullable=True)
+    start_date = db.Column(db.Date, nullable=True)
+    end_date = db.Column(db.Date, nullable=True)
+
+
+class AppSettings(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    notify_email_to = db.Column(db.String(255), nullable=True)
+    notify_email_from = db.Column(db.String(255), nullable=True)
+    smtp_host = db.Column(db.String(255), nullable=True)
+    smtp_port = db.Column(db.Integer, nullable=True, default=587)
+    smtp_user = db.Column(db.String(255), nullable=True)
+    smtp_password = db.Column(db.String(255), nullable=True)
 
 
 def _ensure_schema_updates() -> None:
@@ -37,7 +49,20 @@ def _ensure_schema_updates() -> None:
     columns = [row[1] for row in db.session.execute(text("PRAGMA table_info(task)"))]
     if 'recurrence_days' not in columns:
         db.session.execute(text('ALTER TABLE task ADD COLUMN recurrence_days INTEGER'))
+    if 'start_date' not in columns:
+        db.session.execute(text('ALTER TABLE task ADD COLUMN start_date DATE'))
+    if 'end_date' not in columns:
+        db.session.execute(text('ALTER TABLE task ADD COLUMN end_date DATE'))
+    db.session.commit()
+
+
+def _get_settings() -> AppSettings:
+    settings = AppSettings.query.get(1)
+    if not settings:
+        settings = AppSettings(id=1, smtp_port=587)
+        db.session.add(settings)
         db.session.commit()
+    return settings
 
 
 @app.route('/')
@@ -51,10 +76,30 @@ def add_page():
     return render_template('add.html', plants=plants, active_page='add')
 
 
+@app.route('/settings', methods=['GET', 'POST'])
+def settings_page():
+    settings = _get_settings()
+    if request.method == 'POST':
+        settings.notify_email_to = request.form.get('notify_email_to', '').strip()
+        settings.notify_email_from = request.form.get('notify_email_from', '').strip()
+        settings.smtp_host = request.form.get('smtp_host', '').strip()
+        settings.smtp_port = int(request.form.get('smtp_port', '587') or '587')
+        settings.smtp_user = request.form.get('smtp_user', '').strip()
+        settings.smtp_password = request.form.get('smtp_password', '').strip()
+        db.session.commit()
+        flash('Settings saved.')
+        return redirect(url_for('settings_page'))
+    return render_template('settings.html', settings=settings, active_page='settings')
+
+
 @app.route('/upcoming')
 def upcoming_page():
     plants = Plant.query.order_by(Plant.name.asc()).all()
-    open_tasks = Task.query.filter(Task.completed_on.is_(None)).order_by(Task.due_date.asc()).all()
+    open_tasks = Task.query.filter(
+        Task.completed_on.is_(None),
+        db.or_(Task.start_date.is_(None), Task.due_date >= Task.start_date),
+        db.or_(Task.end_date.is_(None), Task.due_date <= Task.end_date),
+    ).order_by(Task.due_date.asc()).all()
     return render_template('upcoming.html', plants=plants, open_tasks=open_tasks, today=date.today(), active_page='upcoming')
 
 
@@ -76,11 +121,17 @@ def add_task():
     due = datetime.strptime(request.form['due_date'], '%Y-%m-%d').date()
     recurrence_raw = request.form.get('recurrence', 'none')
     recurrence_days = int(recurrence_raw) if recurrence_raw != 'none' else None
+    start_date_raw = request.form.get('start_date', '').strip()
+    end_date_raw = request.form.get('end_date', '').strip()
+    start_date = datetime.strptime(start_date_raw, '%Y-%m-%d').date() if start_date_raw else None
+    end_date = datetime.strptime(end_date_raw, '%Y-%m-%d').date() if end_date_raw else None
     task = Task(
         plant_id=int(request.form['plant_id']),
         activity=request.form['activity'].strip(),
         due_date=due,
         recurrence_days=recurrence_days,
+        start_date=start_date,
+        end_date=end_date,
     )
     db.session.add(task)
     db.session.commit()
@@ -94,11 +145,20 @@ def complete_task(task_id: int):
     task.completed_on = date.today()
 
     if task.recurrence_days:
+        next_due_date = task.due_date + timedelta(days=task.recurrence_days)
+        if task.start_date and next_due_date < task.start_date:
+            next_due_date = task.start_date
+        if task.end_date and next_due_date > task.end_date:
+            db.session.commit()
+            flash('Task marked complete.')
+            return redirect(url_for('upcoming_page'))
         next_task = Task(
             plant_id=task.plant_id,
             activity=task.activity,
-            due_date=task.due_date + timedelta(days=task.recurrence_days),
+            due_date=next_due_date,
             recurrence_days=task.recurrence_days,
+            start_date=task.start_date,
+            end_date=task.end_date,
         )
         db.session.add(next_task)
 
@@ -108,18 +168,24 @@ def complete_task(task_id: int):
 
 
 def send_due_email() -> None:
-    to_addr = os.getenv('NOTIFY_EMAIL_TO')
-    from_addr = os.getenv('NOTIFY_EMAIL_FROM')
-    smtp_host = os.getenv('SMTP_HOST')
-    smtp_port = int(os.getenv('SMTP_PORT', '587'))
-    smtp_user = os.getenv('SMTP_USER')
-    smtp_password = os.getenv('SMTP_PASSWORD')
+    settings = _get_settings()
+    to_addr = settings.notify_email_to or os.getenv('NOTIFY_EMAIL_TO')
+    from_addr = settings.notify_email_from or os.getenv('NOTIFY_EMAIL_FROM')
+    smtp_host = settings.smtp_host or os.getenv('SMTP_HOST')
+    smtp_port = int(settings.smtp_port or os.getenv('SMTP_PORT', '587'))
+    smtp_user = settings.smtp_user or os.getenv('SMTP_USER')
+    smtp_password = settings.smtp_password or os.getenv('SMTP_PASSWORD')
 
     if not all([to_addr, from_addr, smtp_host, smtp_user, smtp_password]):
         print('Email settings not fully configured; skipping email send.')
         return
 
-    due_tasks = Task.query.join(Plant).filter(Task.completed_on.is_(None), Task.due_date <= date.today()).order_by(Task.due_date.asc()).all()
+    due_tasks = Task.query.join(Plant).filter(
+        Task.completed_on.is_(None),
+        Task.due_date <= date.today(),
+        db.or_(Task.start_date.is_(None), Task.due_date >= Task.start_date),
+        db.or_(Task.end_date.is_(None), Task.due_date <= Task.end_date),
+    ).order_by(Task.due_date.asc()).all()
     if not due_tasks:
         print('No due tasks.')
         return
