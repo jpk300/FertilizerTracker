@@ -149,6 +149,38 @@ def _get_settings() -> AppSettings:
     return settings
 
 
+def _smtp_config_from_settings(settings: AppSettings) -> dict:
+    return {
+        'to_addr': settings.notify_email_to or os.getenv('NOTIFY_EMAIL_TO'),
+        'from_addr': settings.notify_email_from or os.getenv('NOTIFY_EMAIL_FROM'),
+        'smtp_host': settings.smtp_host or os.getenv('SMTP_HOST'),
+        'smtp_port': int(settings.smtp_port or os.getenv('SMTP_PORT', '587')),
+        'smtp_user': settings.smtp_user or os.getenv('SMTP_USER'),
+        'smtp_password': settings.smtp_password or os.getenv('SMTP_PASSWORD'),
+        'smtp_sender_name': settings.smtp_sender_name or os.getenv('SMTP_SENDER_NAME', ''),
+        'smtp_helo_ident': settings.smtp_helo_ident or os.getenv('SMTP_HELO_IDENT', ''),
+        'smtp_auth_mode': settings.smtp_auth_mode or os.getenv('SMTP_AUTH_MODE', 'none'),
+        'smtp_security': settings.smtp_security or os.getenv('SMTP_SECURITY', 'tls_if_available'),
+    }
+
+
+def _send_email_with_config(config: dict, msg: EmailMessage) -> None:
+    with smtplib.SMTP(
+        config['smtp_host'],
+        config['smtp_port'],
+        timeout=20,
+        local_hostname=config['smtp_helo_ident'] or None,
+    ) as server:
+        if config['smtp_security'] == 'tls_if_available':
+            server.ehlo()
+            if server.has_extn('starttls'):
+                server.starttls()
+                server.ehlo()
+        if config['smtp_auth_mode'] != 'none':
+            server.login(config['smtp_user'], config['smtp_password'])
+        server.send_message(msg)
+
+
 _schema_initialized = False
 
 
@@ -216,6 +248,36 @@ def settings_page():
         flash('Settings saved.')
         return redirect(url_for('settings_page'))
     return render_template('settings.html', settings=settings, active_page='settings')
+
+
+@app.post('/settings/test-email')
+def test_settings_email():
+    settings = _get_settings()
+    config = _smtp_config_from_settings(settings)
+    if not all([config['to_addr'], config['from_addr'], config['smtp_host']]):
+        flash('Cannot send test email: recipient, sender, and SMTP host are required.')
+        return redirect(url_for('settings_page'))
+    if config['smtp_auth_mode'] != 'none' and not all([config['smtp_user'], config['smtp_password']]):
+        flash('Cannot send test email: SMTP authentication is enabled but credentials are missing.')
+        return redirect(url_for('settings_page'))
+
+    msg = EmailMessage()
+    msg['Subject'] = f'SMTP test from FertilizerTracker ({date.today().isoformat()})'
+    msg['From'] = f"{config['smtp_sender_name']} <{config['from_addr']}>" if config['smtp_sender_name'] else config['from_addr']
+    msg['To'] = config['to_addr']
+    msg.set_content(
+        'This is a test email from FertilizerTracker settings.\n'
+        f"Sent at {datetime.utcnow().isoformat()}Z."
+    )
+
+    try:
+        _send_email_with_config(config, msg)
+    except Exception as exc:
+        flash(f'Test email failed: {exc}')
+        return redirect(url_for('settings_page'))
+
+    flash(f"Test email sent to {config['to_addr']}.")
+    return redirect(url_for('settings_page'))
 
 
 @app.route('/upcoming')
@@ -407,21 +469,12 @@ def import_data():
 
 def send_due_email() -> None:
     settings = _get_settings()
-    to_addr = settings.notify_email_to or os.getenv('NOTIFY_EMAIL_TO')
-    from_addr = settings.notify_email_from or os.getenv('NOTIFY_EMAIL_FROM')
-    smtp_host = settings.smtp_host or os.getenv('SMTP_HOST')
-    smtp_port = int(settings.smtp_port or os.getenv('SMTP_PORT', '587'))
-    smtp_user = settings.smtp_user or os.getenv('SMTP_USER')
-    smtp_password = settings.smtp_password or os.getenv('SMTP_PASSWORD')
-    smtp_sender_name = settings.smtp_sender_name or os.getenv('SMTP_SENDER_NAME', '')
-    smtp_helo_ident = settings.smtp_helo_ident or os.getenv('SMTP_HELO_IDENT', '')
-    smtp_auth_mode = settings.smtp_auth_mode or os.getenv('SMTP_AUTH_MODE', 'none')
-    smtp_security = settings.smtp_security or os.getenv('SMTP_SECURITY', 'tls_if_available')
+    config = _smtp_config_from_settings(settings)
 
-    if not all([to_addr, from_addr, smtp_host]):
+    if not all([config['to_addr'], config['from_addr'], config['smtp_host']]):
         print('Email settings not fully configured; skipping email send.')
         return
-    if smtp_auth_mode != 'none' and not all([smtp_user, smtp_password]):
+    if config['smtp_auth_mode'] != 'none' and not all([config['smtp_user'], config['smtp_password']]):
         print('SMTP authentication enabled but credentials are missing; skipping email send.')
         return
 
@@ -441,23 +494,15 @@ def send_due_email() -> None:
 
     msg = EmailMessage()
     msg['Subject'] = f'Plant upkeep due tasks ({date.today().isoformat()})'
-    msg['From'] = f"{smtp_sender_name} <{from_addr}>" if smtp_sender_name else from_addr
-    msg['To'] = to_addr
+    msg['From'] = f"{config['smtp_sender_name']} <{config['from_addr']}>" if config['smtp_sender_name'] else config['from_addr']
+    msg['To'] = config['to_addr']
     msg.set_content('\n'.join(lines))
 
-    with smtplib.SMTP(smtp_host, smtp_port, timeout=20, local_hostname=smtp_helo_ident or None) as server:
-        if smtp_security == 'tls_if_available':
-            server.ehlo()
-            if server.has_extn('starttls'):
-                server.starttls()
-                server.ehlo()
-        if smtp_auth_mode != 'none':
-            server.login(smtp_user, smtp_password)
-        server.send_message(msg)
+    _send_email_with_config(config, msg)
 
-    db.session.add(ReminderLog(recipients=to_addr, task_count=len(due_tasks)))
+    db.session.add(ReminderLog(recipients=config['to_addr'], task_count=len(due_tasks)))
     db.session.commit()
-    print(f'Sent reminder email to {to_addr} with {len(due_tasks)} due task(s).')
+    print(f"Sent reminder email to {config['to_addr']} with {len(due_tasks)} due task(s).")
 
 
 if __name__ == '__main__':
