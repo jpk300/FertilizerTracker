@@ -20,7 +20,6 @@
       <select name="view"><option value="cards" {{ 'selected' if view_mode=='cards' else '' }}>Card view</option><option value="table" {{ 'selected' if view_mode=='table' else '' }}>Compact table</option></select>
       <button type="submit">Apply</button>
     </form>
-    <p class="small">Export JSON: <a href="{{ url_for('export_data') }}">/export</a></p>
   </div>
 </div>
 <div class="card">
