@@ -3,7 +3,7 @@ import os
 import uuid
 import smtplib
 from email.message import EmailMessage
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text
 
@@ -23,6 +23,7 @@ class Plant(db.Model):
     image_path = db.Column(db.String(255), nullable=True)
     archived_on = db.Column(db.Date, nullable=True)
     tasks = db.relationship('Task', backref='plant', cascade='all,delete-orphan', lazy=True)
+    photos = db.relationship('PlantPhoto', backref='plant', cascade='all,delete-orphan', lazy=True)
 
 
 class Task(db.Model):
@@ -34,6 +35,21 @@ class Task(db.Model):
     recurrence_days = db.Column(db.Integer, nullable=True)
     start_date = db.Column(db.Date, nullable=True)
     end_date = db.Column(db.Date, nullable=True)
+
+
+class PlantPhoto(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    plant_id = db.Column(db.Integer, db.ForeignKey('plant.id'), nullable=False)
+    image_path = db.Column(db.String(255), nullable=False)
+    note = db.Column(db.String(255), nullable=True)
+    taken_on = db.Column(db.Date, nullable=False, default=date.today)
+
+
+class ReminderLog(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    sent_on = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    recipients = db.Column(db.String(255), nullable=False)
+    task_count = db.Column(db.Integer, nullable=False, default=0)
 
 
 class AppSettings(db.Model):
@@ -64,6 +80,37 @@ def _ensure_schema_updates() -> None:
     db.session.commit()
 
 
+
+
+def _save_uploaded_image(image):
+    ext = os.path.splitext(image.filename)[1].lower()
+    allowed_extensions = {'.png', '.jpg', '.jpeg', '.gif', '.webp'}
+    if ext not in allowed_extensions:
+        return None
+    upload_dir = os.path.join(app.static_folder, 'uploads')
+    os.makedirs(upload_dir, exist_ok=True)
+    filename = f"{uuid.uuid4().hex}{ext}"
+    save_path = os.path.join(upload_dir, filename)
+    image.save(save_path)
+    return f'uploads/{filename}'
+
+
+def _plant_care_summary(plant: Plant):
+    open_tasks = [t for t in plant.tasks if t.completed_on is None]
+    completed_tasks = [t for t in plant.tasks if t.completed_on]
+    next_due = min((t.due_date for t in open_tasks), default=None)
+    last_done = max((t.completed_on for t in completed_tasks), default=None)
+    today = date.today()
+    if next_due is None:
+        status = 'On track'
+    elif next_due < today:
+        status = 'Overdue'
+    elif next_due <= today + timedelta(days=3):
+        status = 'Due soon'
+    else:
+        status = 'On track'
+    return {'next_due': next_due, 'last_done': last_done, 'status': status}
+
 def _get_settings() -> AppSettings:
     settings = AppSettings.query.get(1)
     if not settings:
@@ -80,9 +127,17 @@ def index():
 
 @app.route('/add')
 def add_page():
-    plants = Plant.query.filter(Plant.archived_on.is_(None)).order_by(Plant.name.asc()).all()
+    location_filter = request.args.get('location', '').strip()
+    view_mode = request.args.get('view', 'cards')
+    plants_q = Plant.query.filter(Plant.archived_on.is_(None))
+    if location_filter:
+        plants_q = plants_q.filter(Plant.location == location_filter)
+    plants = plants_q.order_by(Plant.name.asc()).all()
     archived_plants = Plant.query.filter(Plant.archived_on.isnot(None)).order_by(Plant.name.asc()).all()
-    return render_template('add.html', plants=plants, archived_plants=archived_plants, active_page='add')
+    locations = [row[0] for row in db.session.query(Plant.location).filter(Plant.location.isnot(None), Plant.location != '').distinct().all()]
+    care_summaries = {plant.id: _plant_care_summary(plant) for plant in plants}
+    return render_template('add.html', plants=plants, archived_plants=archived_plants, active_page='add',
+                           care_summaries=care_summaries, locations=locations, location_filter=location_filter, view_mode=view_mode)
 
 
 @app.route('/settings', methods=['GET', 'POST'])
@@ -103,14 +158,21 @@ def settings_page():
 
 @app.route('/upcoming')
 def upcoming_page():
-    plants = Plant.query.filter(Plant.archived_on.is_(None)).order_by(Plant.name.asc()).all()
-    open_tasks = Task.query.filter(
+    status_filter = request.args.get('status', '').strip()
+    open_tasks_query = Task.query.filter(
         Task.plant.has(Plant.archived_on.is_(None)),
         Task.completed_on.is_(None),
         db.or_(Task.start_date.is_(None), Task.due_date >= Task.start_date),
         db.or_(Task.end_date.is_(None), Task.due_date <= Task.end_date),
-    ).order_by(Task.due_date.asc()).all()
-    return render_template('upcoming.html', plants=plants, open_tasks=open_tasks, today=date.today(), active_page='upcoming')
+    )
+    today = date.today()
+    if status_filter == 'due_week':
+        open_tasks_query = open_tasks_query.filter(Task.due_date <= today + timedelta(days=7))
+    elif status_filter == 'overdue':
+        open_tasks_query = open_tasks_query.filter(Task.due_date < today)
+    open_tasks = open_tasks_query.order_by(Task.due_date.asc()).all()
+    plants = Plant.query.order_by(Plant.name.asc()).all()
+    return render_template('upcoming.html', plants=plants, open_tasks=open_tasks, today=today, active_page='upcoming', status_filter=status_filter)
 
 
 @app.post('/plants/<int:plant_id>/archive')
@@ -136,17 +198,10 @@ def add_plant():
     image = request.files.get('image')
     image_path = None
     if image and image.filename:
-        ext = os.path.splitext(image.filename)[1].lower()
-        allowed_extensions = {'.png', '.jpg', '.jpeg', '.gif', '.webp'}
-        if ext not in allowed_extensions:
+        image_path = _save_uploaded_image(image)
+        if not image_path:
             flash('Unsupported image format. Use PNG, JPG, GIF, or WEBP.')
             return redirect(url_for('add_page'))
-        upload_dir = os.path.join(app.static_folder, 'uploads')
-        os.makedirs(upload_dir, exist_ok=True)
-        filename = f"{uuid.uuid4().hex}{ext}"
-        save_path = os.path.join(upload_dir, filename)
-        image.save(save_path)
-        image_path = f'uploads/{filename}'
 
     plant = Plant(
         name=request.form['name'].strip(),
@@ -157,6 +212,29 @@ def add_plant():
     db.session.add(plant)
     db.session.commit()
     flash('Plant added.')
+    return redirect(url_for('add_page'))
+
+
+@app.post('/plants/<int:plant_id>/edit')
+def edit_plant(plant_id: int):
+    plant = Plant.query.get_or_404(plant_id)
+    plant.name = request.form.get('name', plant.name).strip()
+    plant.location = request.form.get('location', '').strip()
+    plant.notes = request.form.get('notes', '').strip()
+    image = request.files.get('image')
+    if image and image.filename:
+        saved = _save_uploaded_image(image)
+        if not saved:
+            flash('Unsupported image format. Use PNG, JPG, GIF, or WEBP.')
+            return redirect(url_for('add_page'))
+        plant.image_path = saved
+    timeline_image = request.files.get('timeline_image')
+    if timeline_image and timeline_image.filename:
+        saved = _save_uploaded_image(timeline_image)
+        if saved:
+            db.session.add(PlantPhoto(plant_id=plant.id, image_path=saved, note=request.form.get('timeline_note', '').strip(), taken_on=date.today()))
+    db.session.commit()
+    flash('Plant updated.')
     return redirect(url_for('add_page'))
 
 
@@ -211,6 +289,35 @@ def complete_task(task_id: int):
     return redirect(url_for('upcoming_page'))
 
 
+@app.get('/export')
+def export_data():
+    plants = []
+    for p in Plant.query.order_by(Plant.id.asc()).all():
+        plants.append({
+            'id': p.id, 'name': p.name, 'location': p.location, 'notes': p.notes, 'image_path': p.image_path,
+            'archived_on': p.archived_on.isoformat() if p.archived_on else None,
+            'tasks': [{'activity': t.activity, 'due_date': t.due_date.isoformat(), 'completed_on': t.completed_on.isoformat() if t.completed_on else None, 'recurrence_days': t.recurrence_days} for t in p.tasks],
+            'photos': [{'image_path': ph.image_path, 'note': ph.note, 'taken_on': ph.taken_on.isoformat()} for ph in p.photos],
+        })
+    logs = [{'sent_on': l.sent_on.isoformat(), 'recipients': l.recipients, 'task_count': l.task_count} for l in ReminderLog.query.order_by(ReminderLog.sent_on.desc()).all()]
+    return jsonify({'plants': plants, 'reminder_logs': logs})
+
+
+@app.post('/import')
+def import_data():
+    payload = request.get_json(silent=True) or {}
+    for item in payload.get('plants', []):
+        plant = Plant(name=item.get('name', 'Unnamed plant'), location=item.get('location'), notes=item.get('notes'), image_path=item.get('image_path'))
+        db.session.add(plant)
+        db.session.flush()
+        for t in item.get('tasks', []):
+            db.session.add(Task(plant_id=plant.id, activity=t['activity'], due_date=datetime.strptime(t['due_date'], '%Y-%m-%d').date(), completed_on=datetime.strptime(t['completed_on'], '%Y-%m-%d').date() if t.get('completed_on') else None, recurrence_days=t.get('recurrence_days')))
+        for ph in item.get('photos', []):
+            db.session.add(PlantPhoto(plant_id=plant.id, image_path=ph['image_path'], note=ph.get('note'), taken_on=datetime.strptime(ph['taken_on'], '%Y-%m-%d').date()))
+    db.session.commit()
+    return {'ok': True}
+
+
 def send_due_email() -> None:
     settings = _get_settings()
     to_addr = settings.notify_email_to or os.getenv('NOTIFY_EMAIL_TO')
@@ -249,6 +356,8 @@ def send_due_email() -> None:
         server.login(smtp_user, smtp_password)
         server.send_message(msg)
 
+    db.session.add(ReminderLog(recipients=to_addr, task_count=len(due_tasks)))
+    db.session.commit()
     print(f'Sent reminder email to {to_addr} with {len(due_tasks)} due task(s).')
 
 

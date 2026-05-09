@@ -1,31 +1,14 @@
 {% extends 'base.html' %}
 {% block content %}
 <div class="card">
-  <h2>Upcoming & Due Activities ({{ open_tasks|length }})</h2>
-  {% for task in open_tasks %}
-    <div class="task {{ 'overdue' if task.due_date <= today else '' }}">
-      <strong>{{ task.plant.name }}</strong> — {{ task.activity }}
-      <div class="small">Due {{ task.due_date.isoformat() }}{% if task.recurrence_days %} · repeats every {{ task.recurrence_days }} day(s){% endif %}{% if task.start_date or task.end_date %} · active {{ task.start_date.isoformat() if task.start_date else 'any time' }} to {{ task.end_date.isoformat() if task.end_date else 'open-ended' }}{% endif %}</div>
-      <form method="post" action="{{ url_for('complete_task', task_id=task.id) }}">
-        <button type="submit">Mark Complete</button>
-      </form>
-    </div>
-  {% else %}<p class="muted">No upcoming activities.</p>{% endfor %}
+<h2>Upcoming & Due Activities ({{ open_tasks|length }})</h2>
+<div class="button-row">
+<a href="{{ url_for('upcoming_page') }}">All</a>
+<a href="{{ url_for('upcoming_page', status='due_week') }}">Due this week</a>
+<a href="{{ url_for('upcoming_page', status='overdue') }}">Overdue</a>
 </div>
-
-<div class="card">
-  <h2>Completion History by Plant</h2>
-  {% for plant in plants %}
-    <h3>{{ plant.name }}</h3>
-    {% set completed = plant.tasks|selectattr('completed_on')|list %}
-    {% if completed %}
-      {% for task in completed|sort(attribute='completed_on', reverse=True) %}
-        <div class="task">
-          {{ task.activity }}
-          <div class="small">Completed {{ task.completed_on.isoformat() }} (was due {{ task.due_date.isoformat() }})</div>
-        </div>
-      {% endfor %}
-    {% else %}<p class="muted">No completed activities yet.</p>{% endif %}
-  {% else %}<p class="muted">No plants added yet.</p>{% endfor %}
+{% for task in open_tasks %}
+<div class="task {{ 'overdue' if task.due_date <= today else '' }}"><strong>{{ task.plant.name }}</strong> — {{ task.activity }}<div class="small">Due {{ task.due_date.isoformat() }}</div><form method="post" action="{{ url_for('complete_task', task_id=task.id) }}"><button type="submit">Mark Complete</button></form></div>
+{% else %}<p class="muted">No upcoming activities.</p>{% endfor %}
 </div>
 {% endblock %}
