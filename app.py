@@ -47,6 +47,7 @@ class Task(db.Model):
     recurrence_days = db.Column(db.Integer, nullable=True)
     start_date = db.Column(db.Date, nullable=True)
     end_date = db.Column(db.Date, nullable=True)
+    reminder_timing = db.Column(db.String(24), nullable=True, default='none')
 
 
 class PlantPhoto(db.Model):
@@ -90,6 +91,8 @@ def _ensure_schema_updates() -> None:
         db.session.execute(text('ALTER TABLE task ADD COLUMN start_date DATE'))
     if 'end_date' not in columns:
         db.session.execute(text('ALTER TABLE task ADD COLUMN end_date DATE'))
+    if 'reminder_timing' not in columns:
+        db.session.execute(text("ALTER TABLE task ADD COLUMN reminder_timing VARCHAR(24) DEFAULT 'none'"))
     if 'archived_on' not in plant_columns:
         db.session.execute(text('ALTER TABLE plant ADD COLUMN archived_on DATE'))
     if 'image_path' not in plant_columns:
@@ -371,6 +374,7 @@ def add_task():
     end_date_raw = request.form.get('end_date', '').strip()
     start_date = datetime.strptime(start_date_raw, '%Y-%m-%d').date() if start_date_raw else None
     end_date = datetime.strptime(end_date_raw, '%Y-%m-%d').date() if end_date_raw else None
+    reminder_timing = request.form.get('reminder_timing', 'none').strip() or 'none'
     task = Task(
         plant_id=int(request.form['plant_id']),
         activity=request.form['activity'].strip(),
@@ -378,6 +382,7 @@ def add_task():
         recurrence_days=recurrence_days,
         start_date=start_date,
         end_date=end_date,
+        reminder_timing=reminder_timing,
     )
     db.session.add(task)
     db.session.commit()
@@ -405,6 +410,7 @@ def complete_task(task_id: int):
             recurrence_days=task.recurrence_days,
             start_date=task.start_date,
             end_date=task.end_date,
+            reminder_timing=task.reminder_timing,
         )
         db.session.add(next_task)
 
@@ -424,6 +430,7 @@ def edit_task(task_id: int):
     end_date_raw = request.form.get('end_date', '').strip()
     task.start_date = datetime.strptime(start_date_raw, '%Y-%m-%d').date() if start_date_raw else None
     task.end_date = datetime.strptime(end_date_raw, '%Y-%m-%d').date() if end_date_raw else None
+    task.reminder_timing = request.form.get('reminder_timing', 'none').strip() or 'none'
     db.session.commit()
     flash('Scheduled activity updated.')
     return redirect(url_for('add_page'))
@@ -480,16 +487,22 @@ def send_due_email() -> None:
 
     due_tasks = Task.query.join(Plant).filter(
         Task.completed_on.is_(None),
-        Task.due_date <= date.today(),
+        Task.reminder_timing.in_(['on_due_date', 'after_due_date']),
         db.or_(Task.start_date.is_(None), Task.due_date >= Task.start_date),
         db.or_(Task.end_date.is_(None), Task.due_date <= Task.end_date),
     ).order_by(Task.due_date.asc()).all()
-    if not due_tasks:
+    today = date.today()
+    matching_tasks = [
+        task for task in due_tasks
+        if (task.reminder_timing == 'on_due_date' and task.due_date == today)
+        or (task.reminder_timing == 'after_due_date' and task.due_date < today)
+    ]
+    if not matching_tasks:
         print('No due tasks.')
         return
 
     lines = ['The following plant maintenance tasks are due:']
-    for task in due_tasks:
+    for task in matching_tasks:
         lines.append(f"- {task.plant.name}: {task.activity} (due {task.due_date.isoformat()})")
 
     msg = EmailMessage()
@@ -500,9 +513,9 @@ def send_due_email() -> None:
 
     _send_email_with_config(config, msg)
 
-    db.session.add(ReminderLog(recipients=config['to_addr'], task_count=len(due_tasks)))
+    db.session.add(ReminderLog(recipients=config['to_addr'], task_count=len(matching_tasks)))
     db.session.commit()
-    print(f"Sent reminder email to {config['to_addr']} with {len(due_tasks)} due task(s).")
+    print(f"Sent reminder email to {config['to_addr']} with {len(matching_tasks)} due task(s).")
 
 
 if __name__ == '__main__':

@@ -74,6 +74,12 @@
   </select>
   <label for="start-new-{{ plant.id }}">Start date (optional)</label><input id="start-new-{{ plant.id }}" name="start_date" type="date" />
   <label for="end-new-{{ plant.id }}">End date (optional)</label><input id="end-new-{{ plant.id }}" name="end_date" type="date" />
+  <label for="reminder-new-{{ plant.id }}">Email reminder</label>
+  <select id="reminder-new-{{ plant.id }}" name="reminder_timing">
+    <option value="none">Do not send reminder</option>
+    <option value="on_due_date">Send reminder on due date</option>
+    <option value="after_due_date">Send reminder after due date has passed</option>
+  </select>
   <button type="submit">Add scheduled activity</button>
 </form>
 <h3>Scheduled Activities</h3>
@@ -89,6 +95,12 @@
     </select>
     <label for="start-{{ task.id }}">Start date (optional)</label><input id="start-{{ task.id }}" name="start_date" type="date" value="{{ task.start_date.isoformat() if task.start_date else '' }}" />
     <label for="end-{{ task.id }}">End date (optional)</label><input id="end-{{ task.id }}" name="end_date" type="date" value="{{ task.end_date.isoformat() if task.end_date else '' }}" />
+    <label for="reminder-{{ task.id }}">Email reminder</label>
+    <select id="reminder-{{ task.id }}" name="reminder_timing">
+      <option value="none" {{ 'selected' if (task.reminder_timing or 'none') == 'none' else '' }}>Do not send reminder</option>
+      <option value="on_due_date" {{ 'selected' if task.reminder_timing == 'on_due_date' else '' }}>Send reminder on due date</option>
+      <option value="after_due_date" {{ 'selected' if task.reminder_timing == 'after_due_date' else '' }}>Send reminder after due date has passed</option>
+    </select>
     <div class="button-row button-row-actions">
       <button type="submit" class="btn btn-secondary">Update schedule</button>
   </form>
