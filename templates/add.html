@@ -3,13 +3,15 @@
 <div class="grid">
   <div class="card">
     <h2>Add Plant</h2>
-    <form method="post" action="{{ url_for('add_plant') }}">
+    <form method="post" action="{{ url_for('add_plant') }}" enctype="multipart/form-data">
       <label>Name</label>
       <input name="name" required />
       <label>Location</label>
       <input name="location" placeholder="Front bed, patio, windowsill" />
       <label>Notes</label>
       <textarea name="notes" rows="4" placeholder="Sun preference, soil notes, etc."></textarea>
+      <label>Plant photo (optional)</label>
+      <input name="image" type="file" accept="image/png,image/jpeg,image/gif,image/webp" />
       <button type="submit">Save Plant</button>
     </form>
   </div>
@@ -46,12 +48,17 @@
   {% for plant in plants %}
     <div class="task">
       <strong>{{ plant.name }}</strong> <span class="small">{{ plant.location }}</span><br/><span class="small">{{ plant.notes }}</span>
-      <form method="post" action="{{ url_for('archive_plant', plant_id=plant.id) }}" onsubmit="return confirm('Archive this plant and hide it from active schedules?')">
-        <button type="submit">Archive Plant</button>
-      </form>
-      <form method="post" action="{{ url_for('delete_plant', plant_id=plant.id) }}" onsubmit="return confirm('Delete this plant and all task history permanently?')">
-        <button type="submit">Delete Plant & History</button>
-      </form>
+      {% if plant.image_path %}
+        <div><img src="{{ url_for('static', filename=plant.image_path) }}" alt="{{ plant.name }} photo" class="plant-photo" /></div>
+      {% endif %}
+      <div class="button-row">
+        <form method="post" action="{{ url_for('archive_plant', plant_id=plant.id) }}" onsubmit="return confirm('Archive this plant and hide it from active schedules?')">
+          <button class="btn btn-archive" type="submit">🗂️ Archive Plant</button>
+        </form>
+        <form method="post" action="{{ url_for('delete_plant', plant_id=plant.id) }}" onsubmit="return confirm('Delete this plant and all task history permanently?')">
+          <button class="btn btn-delete" type="submit">🗑️ Delete Plant & History</button>
+        </form>
+      </div>
     </div>
   {% else %}<p class="muted">No plants added yet.</p>{% endfor %}
 
