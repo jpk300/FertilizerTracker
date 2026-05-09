@@ -1,9 +1,10 @@
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import os
 import smtplib
 from email.message import EmailMessage
 from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import text
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret')
@@ -27,13 +28,34 @@ class Task(db.Model):
     activity = db.Column(db.String(120), nullable=False)
     due_date = db.Column(db.Date, nullable=False)
     completed_on = db.Column(db.Date, nullable=True)
+    recurrence_days = db.Column(db.Integer, nullable=True)
+
+
+def _ensure_schema_updates() -> None:
+    if 'sqlite' not in app.config['SQLALCHEMY_DATABASE_URI']:
+        return
+    columns = [row[1] for row in db.session.execute(text("PRAGMA table_info(task)"))]
+    if 'recurrence_days' not in columns:
+        db.session.execute(text('ALTER TABLE task ADD COLUMN recurrence_days INTEGER'))
+        db.session.commit()
 
 
 @app.route('/')
 def index():
+    return redirect(url_for('upcoming_page'))
+
+
+@app.route('/add')
+def add_page():
     plants = Plant.query.order_by(Plant.name.asc()).all()
-    due_tasks = Task.query.filter(Task.completed_on.is_(None), Task.due_date <= date.today()).order_by(Task.due_date.asc()).all()
-    return render_template('index.html', plants=plants, due_tasks=due_tasks, today=date.today())
+    return render_template('add.html', plants=plants, active_page='add')
+
+
+@app.route('/upcoming')
+def upcoming_page():
+    plants = Plant.query.order_by(Plant.name.asc()).all()
+    open_tasks = Task.query.filter(Task.completed_on.is_(None)).order_by(Task.due_date.asc()).all()
+    return render_template('upcoming.html', plants=plants, open_tasks=open_tasks, today=date.today(), active_page='upcoming')
 
 
 @app.route('/plants', methods=['POST'])
@@ -46,30 +68,43 @@ def add_plant():
     db.session.add(plant)
     db.session.commit()
     flash('Plant added.')
-    return redirect(url_for('index'))
+    return redirect(url_for('add_page'))
 
 
 @app.route('/tasks', methods=['POST'])
 def add_task():
     due = datetime.strptime(request.form['due_date'], '%Y-%m-%d').date()
+    recurrence_raw = request.form.get('recurrence', 'none')
+    recurrence_days = int(recurrence_raw) if recurrence_raw != 'none' else None
     task = Task(
         plant_id=int(request.form['plant_id']),
         activity=request.form['activity'].strip(),
         due_date=due,
+        recurrence_days=recurrence_days,
     )
     db.session.add(task)
     db.session.commit()
     flash('Maintenance activity scheduled.')
-    return redirect(url_for('index'))
+    return redirect(url_for('add_page'))
 
 
 @app.post('/tasks/<int:task_id>/complete')
 def complete_task(task_id: int):
     task = Task.query.get_or_404(task_id)
     task.completed_on = date.today()
+
+    if task.recurrence_days:
+        next_task = Task(
+            plant_id=task.plant_id,
+            activity=task.activity,
+            due_date=task.due_date + timedelta(days=task.recurrence_days),
+            recurrence_days=task.recurrence_days,
+        )
+        db.session.add(next_task)
+
     db.session.commit()
     flash('Task marked complete.')
-    return redirect(url_for('index'))
+    return redirect(url_for('upcoming_page'))
 
 
 def send_due_email() -> None:
@@ -110,6 +145,7 @@ def send_due_email() -> None:
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
+        _ensure_schema_updates()
 
     if os.getenv('SEND_DUE_EMAIL') == '1':
         with app.app_context():
