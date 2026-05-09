@@ -12,20 +12,18 @@
     </form>
   </div>
   <div class="card">
-    <h2>Browse Plants</h2>
-    <form method="get" action="{{ url_for('add_page') }}">
-      <label for="filter-location">Location</label>
-      <select id="filter-location" name="location" onchange="this.form.submit()"><option value="">All locations</option>{% for loc in locations %}<option value="{{ loc }}" {{ 'selected' if loc==location_filter else '' }}>{{ loc }}</option>{% endfor %}</select>
-      <label for="filter-view">View</label>
-      <select id="filter-view" name="view" onchange="this.form.submit()"><option value="cards" {{ 'selected' if view_mode=='cards' else '' }}>Cards</option><option value="table" {{ 'selected' if view_mode=='table' else '' }}>Table</option></select>
-      <noscript><button class="btn-secondary" type="submit">Update</button></noscript>
-    </form>
+    <h2>Plant Workspace</h2>
+    <div class="small">Choose how you want to work: <strong>Manage</strong> for editing/scheduling, or <strong>Overview</strong> for a quick read-only snapshot.</div>
+    <div class="button-row" style="margin-top:.75rem;">
+      <a class="btn {{ 'btn-secondary' if view_mode != 'manage' else '' }}" href="{{ url_for('add_page', view='manage') }}">Manage plants</a>
+      <a class="btn {{ 'btn-secondary' if view_mode != 'overview' else '' }}" href="{{ url_for('add_page', view='overview') }}">Overview table</a>
+    </div>
   </div>
 </div>
 <div class="card">
-<h2>Plant List</h2>
-<div class="small">Schedule new activities and edit existing schedules directly inside each plant card.</div>
-{% if view_mode == 'table' %}
+<h2>{{ 'Plant Overview' if view_mode == 'overview' else 'Plant Management' }}</h2>
+<div class="small">{{ 'Read-only snapshot of care status for every active plant.' if view_mode == 'overview' else 'Schedule new activities and edit existing schedules directly inside each plant card.' }}</div>
+{% if view_mode == 'overview' %}
 <div style="overflow-x:auto;">
 <table style="width:100%; border-collapse: collapse; min-width: 660px;">
   <tr style="position: sticky; top: 0; background: #edf5ee; z-index: 1;"><th style="text-align:left; padding:.55rem; border-bottom:1px solid #cddfce;">Name</th><th style="text-align:left; padding:.55rem; border-bottom:1px solid #cddfce;">Status</th><th style="text-align:left; padding:.55rem; border-bottom:1px solid #cddfce;">Last done</th><th style="text-align:left; padding:.55rem; border-bottom:1px solid #cddfce;">Next due</th></tr>
