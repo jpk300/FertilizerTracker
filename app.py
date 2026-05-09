@@ -9,11 +9,23 @@ from sqlalchemy import text
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret')
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:////data/plants.db')
+default_db_path = os.path.join(app.root_path, 'data', 'plants.db')
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', f"sqlite:///{default_db_path}")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
+def _ensure_sqlite_directory() -> None:
+    uri = app.config.get('SQLALCHEMY_DATABASE_URI', '')
+    if not uri.startswith('sqlite:///'):
+        return
+    db_path = uri.replace('sqlite:///', '', 1)
+    if db_path == ':memory:':
+        return
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+
+
+_ensure_sqlite_directory()
 
 class Plant(db.Model):
     id = db.Column(db.Integer, primary_key=True)
