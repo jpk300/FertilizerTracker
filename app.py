@@ -166,8 +166,18 @@ def add_page():
     archived_plants = Plant.query.filter(Plant.archived_on.isnot(None)).order_by(Plant.name.asc()).all()
     locations = [row[0] for row in db.session.query(Plant.location).filter(Plant.location.isnot(None), Plant.location != '').distinct().all()]
     care_summaries = {plant.id: _plant_care_summary(plant) for plant in plants}
-    return render_template('add.html', plants=plants, archived_plants=archived_plants, active_page='add',
-                           care_summaries=care_summaries, locations=locations, location_filter=location_filter, view_mode=view_mode)
+    today = date.today()
+    return render_template(
+        'add.html',
+        plants=plants,
+        archived_plants=archived_plants,
+        active_page='add',
+        care_summaries=care_summaries,
+        locations=locations,
+        location_filter=location_filter,
+        view_mode=view_mode,
+        today=today,
+    )
 
 
 @app.route('/settings', methods=['GET', 'POST'])
@@ -317,6 +327,31 @@ def complete_task(task_id: int):
     db.session.commit()
     flash('Task marked complete.')
     return redirect(url_for('upcoming_page'))
+
+
+@app.post('/tasks/<int:task_id>/edit')
+def edit_task(task_id: int):
+    task = Task.query.get_or_404(task_id)
+    task.activity = request.form.get('activity', task.activity).strip()
+    task.due_date = datetime.strptime(request.form['due_date'], '%Y-%m-%d').date()
+    recurrence_raw = request.form.get('recurrence', 'none')
+    task.recurrence_days = int(recurrence_raw) if recurrence_raw != 'none' else None
+    start_date_raw = request.form.get('start_date', '').strip()
+    end_date_raw = request.form.get('end_date', '').strip()
+    task.start_date = datetime.strptime(start_date_raw, '%Y-%m-%d').date() if start_date_raw else None
+    task.end_date = datetime.strptime(end_date_raw, '%Y-%m-%d').date() if end_date_raw else None
+    db.session.commit()
+    flash('Scheduled activity updated.')
+    return redirect(url_for('add_page'))
+
+
+@app.post('/tasks/<int:task_id>/delete')
+def delete_task(task_id: int):
+    task = Task.query.get_or_404(task_id)
+    db.session.delete(task)
+    db.session.commit()
+    flash('Scheduled activity removed.')
+    return redirect(url_for('add_page'))
 
 
 @app.get('/export')
