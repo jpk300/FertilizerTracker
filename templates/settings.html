@@ -5,16 +5,44 @@
   <form method="post" action="{{ url_for('settings_page') }}">
     <label>Reminder recipient email</label>
     <input name="notify_email_to" type="email" value="{{ settings.notify_email_to or '' }}" />
-    <label>Reminder sender email</label>
+    <label>Sender email address</label>
     <input name="notify_email_from" type="email" value="{{ settings.notify_email_from or '' }}" />
-    <label>SMTP host</label>
-    <input name="smtp_host" value="{{ settings.smtp_host or '' }}" placeholder="smtp.example.com" />
-    <label>SMTP port</label>
-    <input name="smtp_port" type="number" value="{{ settings.smtp_port or 587 }}" />
+    <label>Sender name</label>
+    <input name="smtp_sender_name" value="{{ settings.smtp_sender_name or '' }}" placeholder="PRTG Network Monitor" />
+    <label>HELO ident</label>
+    <input name="smtp_helo_ident" value="{{ settings.smtp_helo_ident or '' }}" placeholder="mail.home.local" />
+    <label>SMTP relay server</label>
+    <input name="smtp_host" value="{{ settings.smtp_host or '' }}" placeholder="smtp.home.local" />
+    <label>SMTP relay port</label>
+    <input name="smtp_port" type="number" value="{{ settings.smtp_port or 25 }}" />
+
+    <label>SMTP relay authentication</label>
+    <select name="smtp_auth_mode">
+      <option value="none" {% if (settings.smtp_auth_mode or 'none') == 'none' %}selected{% endif %}>Use no authentication</option>
+      <option value="standard" {% if settings.smtp_auth_mode == 'standard' %}selected{% endif %}>Use standard SMTP authentication</option>
+      <option value="sasl" {% if settings.smtp_auth_mode == 'sasl' %}selected{% endif %}>Use SASL authentication</option>
+    </select>
+
     <label>SMTP username</label>
     <input name="smtp_user" value="{{ settings.smtp_user or '' }}" />
     <label>SMTP password</label>
     <input name="smtp_password" type="password" value="{{ settings.smtp_password or '' }}" />
+
+    <label>Connection security</label>
+    <select name="smtp_security">
+      <option value="tls_if_available" {% if (settings.smtp_security or 'tls_if_available') == 'tls_if_available' %}selected{% endif %}>Use SSL/TLS if server supports it</option>
+      <option value="none" {% if settings.smtp_security == 'none' %}selected{% endif %}>Do not use connection security</option>
+    </select>
+
+    <label>SSL/TLS method</label>
+    <select name="smtp_tls_method">
+      <option value="auto" {% if (settings.smtp_tls_method or 'auto') == 'auto' %}selected{% endif %}>Auto-Negotiate (TLS 1.0 or higher)</option>
+      <option value="ssl3" {% if settings.smtp_tls_method == 'ssl3' %}selected{% endif %}>SSLv3</option>
+      <option value="tls1_0" {% if settings.smtp_tls_method == 'tls1_0' %}selected{% endif %}>TLS 1.0</option>
+      <option value="tls1_1" {% if settings.smtp_tls_method == 'tls1_1' %}selected{% endif %}>TLS 1.1</option>
+      <option value="tls1_2" {% if settings.smtp_tls_method == 'tls1_2' %}selected{% endif %}>TLS 1.2</option>
+      <option value="tls1_3" {% if settings.smtp_tls_method == 'tls1_3' %}selected{% endif %}>TLS 1.3</option>
+    </select>
     <button type="submit">Save Settings</button>
   </form>
   <p class="small">These values override environment variables when provided.</p>

@@ -72,6 +72,11 @@ class AppSettings(db.Model):
     smtp_port = db.Column(db.Integer, nullable=True, default=587)
     smtp_user = db.Column(db.String(255), nullable=True)
     smtp_password = db.Column(db.String(255), nullable=True)
+    smtp_sender_name = db.Column(db.String(255), nullable=True)
+    smtp_helo_ident = db.Column(db.String(255), nullable=True)
+    smtp_auth_mode = db.Column(db.String(32), nullable=True, default='none')
+    smtp_security = db.Column(db.String(32), nullable=True, default='tls_if_available')
+    smtp_tls_method = db.Column(db.String(32), nullable=True, default='auto')
 
 
 def _ensure_schema_updates() -> None:
@@ -89,6 +94,18 @@ def _ensure_schema_updates() -> None:
         db.session.execute(text('ALTER TABLE plant ADD COLUMN archived_on DATE'))
     if 'image_path' not in plant_columns:
         db.session.execute(text('ALTER TABLE plant ADD COLUMN image_path VARCHAR(255)'))
+
+    settings_columns = [row[1] for row in db.session.execute(text("PRAGMA table_info(app_settings)"))]
+    if 'smtp_sender_name' not in settings_columns:
+        db.session.execute(text('ALTER TABLE app_settings ADD COLUMN smtp_sender_name VARCHAR(255)'))
+    if 'smtp_helo_ident' not in settings_columns:
+        db.session.execute(text('ALTER TABLE app_settings ADD COLUMN smtp_helo_ident VARCHAR(255)'))
+    if 'smtp_auth_mode' not in settings_columns:
+        db.session.execute(text("ALTER TABLE app_settings ADD COLUMN smtp_auth_mode VARCHAR(32) DEFAULT 'none'"))
+    if 'smtp_security' not in settings_columns:
+        db.session.execute(text("ALTER TABLE app_settings ADD COLUMN smtp_security VARCHAR(32) DEFAULT 'tls_if_available'"))
+    if 'smtp_tls_method' not in settings_columns:
+        db.session.execute(text("ALTER TABLE app_settings ADD COLUMN smtp_tls_method VARCHAR(32) DEFAULT 'auto'"))
     db.session.commit()
 
 
@@ -126,7 +143,7 @@ def _plant_care_summary(plant: Plant):
 def _get_settings() -> AppSettings:
     settings = AppSettings.query.get(1)
     if not settings:
-        settings = AppSettings(id=1, smtp_port=587)
+        settings = AppSettings(id=1, smtp_port=587, smtp_auth_mode='none', smtp_security='tls_if_available', smtp_tls_method='auto')
         db.session.add(settings)
         db.session.commit()
     return settings
@@ -190,6 +207,11 @@ def settings_page():
         settings.smtp_port = int(request.form.get('smtp_port', '587') or '587')
         settings.smtp_user = request.form.get('smtp_user', '').strip()
         settings.smtp_password = request.form.get('smtp_password', '').strip()
+        settings.smtp_sender_name = request.form.get('smtp_sender_name', '').strip()
+        settings.smtp_helo_ident = request.form.get('smtp_helo_ident', '').strip()
+        settings.smtp_auth_mode = request.form.get('smtp_auth_mode', 'none').strip() or 'none'
+        settings.smtp_security = request.form.get('smtp_security', 'tls_if_available').strip() or 'tls_if_available'
+        settings.smtp_tls_method = request.form.get('smtp_tls_method', 'auto').strip() or 'auto'
         db.session.commit()
         flash('Settings saved.')
         return redirect(url_for('settings_page'))
@@ -391,9 +413,16 @@ def send_due_email() -> None:
     smtp_port = int(settings.smtp_port or os.getenv('SMTP_PORT', '587'))
     smtp_user = settings.smtp_user or os.getenv('SMTP_USER')
     smtp_password = settings.smtp_password or os.getenv('SMTP_PASSWORD')
+    smtp_sender_name = settings.smtp_sender_name or os.getenv('SMTP_SENDER_NAME', '')
+    smtp_helo_ident = settings.smtp_helo_ident or os.getenv('SMTP_HELO_IDENT', '')
+    smtp_auth_mode = settings.smtp_auth_mode or os.getenv('SMTP_AUTH_MODE', 'none')
+    smtp_security = settings.smtp_security or os.getenv('SMTP_SECURITY', 'tls_if_available')
 
-    if not all([to_addr, from_addr, smtp_host, smtp_user, smtp_password]):
+    if not all([to_addr, from_addr, smtp_host]):
         print('Email settings not fully configured; skipping email send.')
+        return
+    if smtp_auth_mode != 'none' and not all([smtp_user, smtp_password]):
+        print('SMTP authentication enabled but credentials are missing; skipping email send.')
         return
 
     due_tasks = Task.query.join(Plant).filter(
@@ -412,13 +441,18 @@ def send_due_email() -> None:
 
     msg = EmailMessage()
     msg['Subject'] = f'Plant upkeep due tasks ({date.today().isoformat()})'
-    msg['From'] = from_addr
+    msg['From'] = f"{smtp_sender_name} <{from_addr}>" if smtp_sender_name else from_addr
     msg['To'] = to_addr
     msg.set_content('\n'.join(lines))
 
-    with smtplib.SMTP(smtp_host, smtp_port, timeout=20) as server:
-        server.starttls()
-        server.login(smtp_user, smtp_password)
+    with smtplib.SMTP(smtp_host, smtp_port, timeout=20, local_hostname=smtp_helo_ident or None) as server:
+        if smtp_security == 'tls_if_available':
+            server.ehlo()
+            if server.has_extn('starttls'):
+                server.starttls()
+                server.ehlo()
+        if smtp_auth_mode != 'none':
+            server.login(smtp_user, smtp_password)
         server.send_message(msg)
 
     db.session.add(ReminderLog(recipients=to_addr, task_count=len(due_tasks)))
