@@ -19,6 +19,7 @@ class Plant(db.Model):
     name = db.Column(db.String(120), nullable=False)
     location = db.Column(db.String(120), nullable=True)
     notes = db.Column(db.Text, nullable=True)
+    archived_on = db.Column(db.Date, nullable=True)
     tasks = db.relationship('Task', backref='plant', cascade='all,delete-orphan', lazy=True)
 
 
@@ -47,12 +48,15 @@ def _ensure_schema_updates() -> None:
     if 'sqlite' not in app.config['SQLALCHEMY_DATABASE_URI']:
         return
     columns = [row[1] for row in db.session.execute(text("PRAGMA table_info(task)"))]
+    plant_columns = [row[1] for row in db.session.execute(text("PRAGMA table_info(plant)"))]
     if 'recurrence_days' not in columns:
         db.session.execute(text('ALTER TABLE task ADD COLUMN recurrence_days INTEGER'))
     if 'start_date' not in columns:
         db.session.execute(text('ALTER TABLE task ADD COLUMN start_date DATE'))
     if 'end_date' not in columns:
         db.session.execute(text('ALTER TABLE task ADD COLUMN end_date DATE'))
+    if 'archived_on' not in plant_columns:
+        db.session.execute(text('ALTER TABLE plant ADD COLUMN archived_on DATE'))
     db.session.commit()
 
 
@@ -72,8 +76,9 @@ def index():
 
 @app.route('/add')
 def add_page():
-    plants = Plant.query.order_by(Plant.name.asc()).all()
-    return render_template('add.html', plants=plants, active_page='add')
+    plants = Plant.query.filter(Plant.archived_on.is_(None)).order_by(Plant.name.asc()).all()
+    archived_plants = Plant.query.filter(Plant.archived_on.isnot(None)).order_by(Plant.name.asc()).all()
+    return render_template('add.html', plants=plants, archived_plants=archived_plants, active_page='add')
 
 
 @app.route('/settings', methods=['GET', 'POST'])
@@ -94,13 +99,32 @@ def settings_page():
 
 @app.route('/upcoming')
 def upcoming_page():
-    plants = Plant.query.order_by(Plant.name.asc()).all()
+    plants = Plant.query.filter(Plant.archived_on.is_(None)).order_by(Plant.name.asc()).all()
     open_tasks = Task.query.filter(
+        Task.plant.has(Plant.archived_on.is_(None)),
         Task.completed_on.is_(None),
         db.or_(Task.start_date.is_(None), Task.due_date >= Task.start_date),
         db.or_(Task.end_date.is_(None), Task.due_date <= Task.end_date),
     ).order_by(Task.due_date.asc()).all()
     return render_template('upcoming.html', plants=plants, open_tasks=open_tasks, today=date.today(), active_page='upcoming')
+
+
+@app.post('/plants/<int:plant_id>/archive')
+def archive_plant(plant_id: int):
+    plant = Plant.query.get_or_404(plant_id)
+    plant.archived_on = date.today()
+    db.session.commit()
+    flash('Plant archived with its task history.')
+    return redirect(url_for('add_page'))
+
+
+@app.post('/plants/<int:plant_id>/delete')
+def delete_plant(plant_id: int):
+    plant = Plant.query.get_or_404(plant_id)
+    db.session.delete(plant)
+    db.session.commit()
+    flash('Plant and all task history deleted.')
+    return redirect(url_for('add_page'))
 
 
 @app.route('/plants', methods=['POST'])

@@ -44,7 +44,22 @@
 <div class="card">
   <h2>Plant List</h2>
   {% for plant in plants %}
-    <p><strong>{{ plant.name }}</strong> <span class="small">{{ plant.location }}</span><br/><span class="small">{{ plant.notes }}</span></p>
+    <div class="task">
+      <strong>{{ plant.name }}</strong> <span class="small">{{ plant.location }}</span><br/><span class="small">{{ plant.notes }}</span>
+      <form method="post" action="{{ url_for('archive_plant', plant_id=plant.id) }}" onsubmit="return confirm('Archive this plant and hide it from active schedules?')">
+        <button type="submit">Archive Plant</button>
+      </form>
+      <form method="post" action="{{ url_for('delete_plant', plant_id=plant.id) }}" onsubmit="return confirm('Delete this plant and all task history permanently?')">
+        <button type="submit">Delete Plant & History</button>
+      </form>
+    </div>
   {% else %}<p class="muted">No plants added yet.</p>{% endfor %}
+
+  {% if archived_plants %}
+    <h3>Archived Plants</h3>
+    {% for plant in archived_plants %}
+      <p><strong>{{ plant.name }}</strong> <span class="small">archived {{ plant.archived_on.isoformat() }}</span></p>
+    {% endfor %}
+  {% endif %}
 </div>
 {% endblock %}
