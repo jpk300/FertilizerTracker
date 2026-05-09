@@ -45,6 +45,9 @@
     </select>
     <button type="submit">Save Settings</button>
   </form>
+  <form method="post" action="{{ url_for('test_settings_email') }}" style="margin-top: 0.75rem;">
+    <button type="submit">Send Test Email</button>
+  </form>
   <p class="small">These values override environment variables when provided.</p>
 </div>
 {% endblock %}
