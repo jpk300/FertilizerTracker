@@ -120,6 +120,24 @@ def _get_settings() -> AppSettings:
     return settings
 
 
+_schema_initialized = False
+
+
+def _initialize_database() -> None:
+    global _schema_initialized
+    if _schema_initialized:
+        return
+    with app.app_context():
+        db.create_all()
+        _ensure_schema_updates()
+    _schema_initialized = True
+
+
+@app.before_request
+def _initialize_database_before_request():
+    _initialize_database()
+
+
 @app.route('/')
 def index():
     return redirect(url_for('upcoming_page'))
@@ -362,10 +380,6 @@ def send_due_email() -> None:
 
 
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
-        _ensure_schema_updates()
-
     if os.getenv('SEND_DUE_EMAIL') == '1':
         with app.app_context():
             send_due_email()
