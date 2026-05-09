@@ -1,5 +1,6 @@
 from datetime import datetime, date, timedelta
 import os
+import uuid
 import smtplib
 from email.message import EmailMessage
 from flask import Flask, render_template, request, redirect, url_for, flash
@@ -19,6 +20,7 @@ class Plant(db.Model):
     name = db.Column(db.String(120), nullable=False)
     location = db.Column(db.String(120), nullable=True)
     notes = db.Column(db.Text, nullable=True)
+    image_path = db.Column(db.String(255), nullable=True)
     archived_on = db.Column(db.Date, nullable=True)
     tasks = db.relationship('Task', backref='plant', cascade='all,delete-orphan', lazy=True)
 
@@ -57,6 +59,8 @@ def _ensure_schema_updates() -> None:
         db.session.execute(text('ALTER TABLE task ADD COLUMN end_date DATE'))
     if 'archived_on' not in plant_columns:
         db.session.execute(text('ALTER TABLE plant ADD COLUMN archived_on DATE'))
+    if 'image_path' not in plant_columns:
+        db.session.execute(text('ALTER TABLE plant ADD COLUMN image_path VARCHAR(255)'))
     db.session.commit()
 
 
@@ -129,10 +133,26 @@ def delete_plant(plant_id: int):
 
 @app.route('/plants', methods=['POST'])
 def add_plant():
+    image = request.files.get('image')
+    image_path = None
+    if image and image.filename:
+        ext = os.path.splitext(image.filename)[1].lower()
+        allowed_extensions = {'.png', '.jpg', '.jpeg', '.gif', '.webp'}
+        if ext not in allowed_extensions:
+            flash('Unsupported image format. Use PNG, JPG, GIF, or WEBP.')
+            return redirect(url_for('add_page'))
+        upload_dir = os.path.join(app.static_folder, 'uploads')
+        os.makedirs(upload_dir, exist_ok=True)
+        filename = f"{uuid.uuid4().hex}{ext}"
+        save_path = os.path.join(upload_dir, filename)
+        image.save(save_path)
+        image_path = f'uploads/{filename}'
+
     plant = Plant(
         name=request.form['name'].strip(),
         location=request.form.get('location', '').strip(),
         notes=request.form.get('notes', '').strip(),
+        image_path=image_path,
     )
     db.session.add(plant)
     db.session.commit()
