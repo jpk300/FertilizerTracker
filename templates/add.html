@@ -4,30 +4,37 @@
   <div class="card">
     <h2>Add Plant</h2>
     <form method="post" action="{{ url_for('add_plant') }}" enctype="multipart/form-data">
-      <label>Name</label><input name="name" required />
-      <label>Location</label><input name="location" placeholder="Front bed, patio, windowsill" />
-      <label>Notes</label><textarea name="notes" rows="4"></textarea>
-      <label>Plant photo (optional)</label><input name="image" type="file" accept="image/png,image/jpeg,image/gif,image/webp" />
+      <label for="new-name">Name</label><input id="new-name" name="name" required />
+      <label for="new-location">Location</label><input id="new-location" name="location" placeholder="Front bed, patio, windowsill" />
+      <label for="new-notes">Notes</label><textarea id="new-notes" name="notes" rows="4"></textarea>
+      <label for="new-image">Plant photo (optional)</label><input id="new-image" name="image" type="file" accept="image/png,image/jpeg,image/gif,image/webp" />
       <button type="submit">Save Plant</button>
     </form>
   </div>
   <div class="card">
     <h2>Filters + View</h2>
     <form method="get" action="{{ url_for('add_page') }}">
-      <label>By location</label>
-      <select name="location"><option value="">All locations</option>{% for loc in locations %}<option value="{{ loc }}" {{ 'selected' if loc==location_filter else '' }}>{{ loc }}</option>{% endfor %}</select>
-      <label>View mode</label>
-      <select name="view"><option value="cards" {{ 'selected' if view_mode=='cards' else '' }}>Card view</option><option value="table" {{ 'selected' if view_mode=='table' else '' }}>Compact table</option></select>
-      <button type="submit">Apply</button>
+      <div class="small">FILTERS</div>
+      <label for="filter-location">By location</label>
+      <select id="filter-location" name="location"><option value="">All locations</option>{% for loc in locations %}<option value="{{ loc }}" {{ 'selected' if loc==location_filter else '' }}>{{ loc }}</option>{% endfor %}</select>
+      <div class="field-help">Limit the list to one growing area.</div>
+      <div class="small">VIEW</div>
+      <label for="filter-view">View mode</label>
+      <select id="filter-view" name="view"><option value="cards" {{ 'selected' if view_mode=='cards' else '' }}>Card view</option><option value="table" {{ 'selected' if view_mode=='table' else '' }}>Compact table</option></select>
+      <div class="field-help">Switch between detailed cards and quick scan table.</div>
+      <button class="btn-secondary" type="submit">Apply filters</button>
     </form>
   </div>
 </div>
 <div class="card">
 <h2>Plant List</h2>
 {% if view_mode == 'table' %}
-<table><tr><th>Name</th><th>Status</th><th>Last done</th><th>Next due</th></tr>
-{% for plant in plants %}{% set summary = care_summaries[plant.id] %}<tr><td>{{ plant.name }}</td><td>{{ summary.status }}</td><td>{{ summary.last_done.isoformat() if summary.last_done else '—' }}</td><td>{{ summary.next_due.isoformat() if summary.next_due else '—' }}</td></tr>{% endfor %}
+<div style="overflow-x:auto;">
+<table style="width:100%; border-collapse: collapse; min-width: 660px;">
+  <tr style="position: sticky; top: 0; background: #edf5ee; z-index: 1;"><th style="text-align:left; padding:.55rem; border-bottom:1px solid #cddfce;">Name</th><th style="text-align:left; padding:.55rem; border-bottom:1px solid #cddfce;">Status</th><th style="text-align:left; padding:.55rem; border-bottom:1px solid #cddfce;">Last done</th><th style="text-align:left; padding:.55rem; border-bottom:1px solid #cddfce;">Next due</th></tr>
+{% for plant in plants %}{% set summary = care_summaries[plant.id] %}<tr style="background: {{ '#fafdf9' if loop.index is odd else '#f2f8f2' }};"><td style="padding:.5rem .55rem;">{{ plant.name }}</td><td style="padding:.5rem .55rem;">{{ summary.status }}</td><td style="padding:.5rem .55rem;">{{ summary.last_done.isoformat() if summary.last_done else '—' }}</td><td style="padding:.5rem .55rem;">{{ summary.next_due.isoformat() if summary.next_due else '—' }}</td></tr>{% endfor %}
 </table>
+</div>
 {% endif %}
 {% for plant in plants %}
 {% set summary = care_summaries[plant.id] %}
@@ -38,13 +45,14 @@
 </summary>
 <div class="task-content">
 {% if plant.image_path %}<div><img src="{{ url_for('static', filename=plant.image_path) }}" class="plant-photo"/></div>{% endif %}
+<hr style="border:0; border-top:1px solid #d9e8da; margin:.6rem 0 .8rem;" />
 <form method="post" action="{{ url_for('edit_plant', plant_id=plant.id) }}" enctype="multipart/form-data">
-<input name="name" value="{{ plant.name }}" required />
-<input name="location" value="{{ plant.location or '' }}" placeholder="Location" />
-<textarea name="notes" rows="2">{{ plant.notes or '' }}</textarea>
-<label>Replace cover photo</label><input name="image" type="file" accept="image/png,image/jpeg,image/gif,image/webp" />
-<label>Add growth timeline photo</label><input name="timeline_image" type="file" accept="image/png,image/jpeg,image/gif,image/webp" />
-<input name="timeline_note" placeholder="Photo note" />
+<label for="name-{{ plant.id }}">Name</label><input id="name-{{ plant.id }}" name="name" value="{{ plant.name }}" required />
+<label for="location-{{ plant.id }}">Location</label><input id="location-{{ plant.id }}" name="location" value="{{ plant.location or '' }}" placeholder="Location" />
+<label for="notes-{{ plant.id }}">Notes</label><textarea id="notes-{{ plant.id }}" name="notes" rows="2">{{ plant.notes or '' }}</textarea>
+<label for="image-{{ plant.id }}">Replace cover photo</label><input id="image-{{ plant.id }}" name="image" type="file" accept="image/png,image/jpeg,image/gif,image/webp" />
+<label for="timeline-image-{{ plant.id }}">Add growth timeline photo</label><input id="timeline-image-{{ plant.id }}" name="timeline_image" type="file" accept="image/png,image/jpeg,image/gif,image/webp" />
+<label for="timeline-note-{{ plant.id }}">Timeline note</label><input id="timeline-note-{{ plant.id }}" name="timeline_note" placeholder="Photo note" />
 <button type="submit">Save edits</button>
 </form>
 {% if plant.photos %}<div class="small">Timeline:</div>{% for photo in (plant.photos|sort(attribute='taken_on', reverse=True))[:5] %}<img src="{{ url_for('static', filename=photo.image_path) }}" class="plant-photo" title="{{ photo.taken_on.isoformat() }} {{ photo.note or '' }}" />{% endfor %}{% endif %}
