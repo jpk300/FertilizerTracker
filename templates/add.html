@@ -45,7 +45,7 @@
 <input name="timeline_note" placeholder="Photo note" />
 <button type="submit">Save edits</button>
 </form>
-{% if plant.photos %}<div class="small">Timeline:</div>{% for photo in plant.photos|sort(attribute='taken_on', reverse=True)[:5] %}<img src="{{ url_for('static', filename=photo.image_path) }}" class="plant-photo" title="{{ photo.taken_on.isoformat() }} {{ photo.note or '' }}" />{% endfor %}{% endif %}
+{% if plant.photos %}<div class="small">Timeline:</div>{% for photo in (plant.photos|sort(attribute='taken_on', reverse=True))[:5] %}<img src="{{ url_for('static', filename=photo.image_path) }}" class="plant-photo" title="{{ photo.taken_on.isoformat() }} {{ photo.note or '' }}" />{% endfor %}{% endif %}
 </div>
 {% endfor %}
 </div>
