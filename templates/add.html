@@ -24,6 +24,7 @@
 </div>
 <div class="card">
 <h2>Plant List</h2>
+<div class="small">Schedule new activities and edit existing schedules directly inside each plant card.</div>
 {% if view_mode == 'table' %}
 <div style="overflow-x:auto;">
 <table style="width:100%; border-collapse: collapse; min-width: 660px;">
@@ -60,6 +61,45 @@
   </form>
 </div>
 {% if plant.photos %}<div class="small">Timeline:</div>{% for photo in (plant.photos|sort(attribute='taken_on', reverse=True))[:5] %}<img src="{{ url_for('static', filename=photo.image_path) }}" class="plant-photo" title="{{ photo.taken_on.isoformat() }} {{ photo.note or '' }}" />{% endfor %}{% endif %}
+<hr style="border:0; border-top:1px solid #d9e8da; margin:.8rem 0;" />
+<h3>Schedule Activity</h3>
+<form method="post" action="{{ url_for('add_task') }}">
+  <input type="hidden" name="plant_id" value="{{ plant.id }}" />
+  <label for="activity-new-{{ plant.id }}">Activity</label><input id="activity-new-{{ plant.id }}" name="activity" placeholder="Water, fertilize, prune..." required />
+  <label for="due-new-{{ plant.id }}">Due date</label><input id="due-new-{{ plant.id }}" name="due_date" type="date" value="{{ today.isoformat() }}" required />
+  <label for="recurrence-new-{{ plant.id }}">Repeats</label>
+  <select id="recurrence-new-{{ plant.id }}" name="recurrence">
+    <option value="none">Does not repeat</option>
+    <option value="1">Daily</option><option value="7">Weekly</option><option value="14">Every 2 weeks</option><option value="30">Monthly (30 days)</option>
+  </select>
+  <label for="start-new-{{ plant.id }}">Start date (optional)</label><input id="start-new-{{ plant.id }}" name="start_date" type="date" />
+  <label for="end-new-{{ plant.id }}">End date (optional)</label><input id="end-new-{{ plant.id }}" name="end_date" type="date" />
+  <button type="submit">Add scheduled activity</button>
+</form>
+<h3>Scheduled Activities</h3>
+{% for task in plant.tasks if task.completed_on is none %}
+<div class="task {{ 'overdue' if task.due_date < today else '' }}">
+  <form method="post" action="{{ url_for('edit_task', task_id=task.id) }}">
+    <label for="activity-{{ task.id }}">Activity</label><input id="activity-{{ task.id }}" name="activity" value="{{ task.activity }}" required />
+    <label for="due-{{ task.id }}">Due date</label><input id="due-{{ task.id }}" name="due_date" type="date" value="{{ task.due_date.isoformat() }}" required />
+    <label for="recurrence-{{ task.id }}">Repeats</label>
+    <select id="recurrence-{{ task.id }}" name="recurrence">
+      <option value="none" {{ 'selected' if not task.recurrence_days else '' }}>Does not repeat</option>
+      <option value="1" {{ 'selected' if task.recurrence_days == 1 else '' }}>Daily</option><option value="7" {{ 'selected' if task.recurrence_days == 7 else '' }}>Weekly</option><option value="14" {{ 'selected' if task.recurrence_days == 14 else '' }}>Every 2 weeks</option><option value="30" {{ 'selected' if task.recurrence_days == 30 else '' }}>Monthly (30 days)</option>
+    </select>
+    <label for="start-{{ task.id }}">Start date (optional)</label><input id="start-{{ task.id }}" name="start_date" type="date" value="{{ task.start_date.isoformat() if task.start_date else '' }}" />
+    <label for="end-{{ task.id }}">End date (optional)</label><input id="end-{{ task.id }}" name="end_date" type="date" value="{{ task.end_date.isoformat() if task.end_date else '' }}" />
+    <div class="button-row button-row-actions">
+      <button type="submit" class="btn btn-secondary">Update schedule</button>
+  </form>
+  <form method="post" action="{{ url_for('delete_task', task_id=task.id) }}" onsubmit="return confirm('Delete this scheduled activity?');">
+      <button type="submit" class="btn btn-delete">Delete</button>
+  </form>
+    </div>
+</div>
+{% else %}
+<p class="muted">No scheduled activities yet.</p>
+{% endfor %}
 </div>
 </details>
 {% endfor %}
