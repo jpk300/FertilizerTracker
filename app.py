@@ -209,14 +209,9 @@ def index():
 
 @app.route('/add')
 def add_page():
-    location_filter = request.args.get('location', '').strip()
-    view_mode = request.args.get('view', 'cards')
-    plants_q = Plant.query.filter(Plant.archived_on.is_(None))
-    if location_filter:
-        plants_q = plants_q.filter(Plant.location == location_filter)
-    plants = plants_q.order_by(Plant.name.asc()).all()
+    view_mode = request.args.get('view', 'manage')
+    plants = Plant.query.filter(Plant.archived_on.is_(None)).order_by(Plant.name.asc()).all()
     archived_plants = Plant.query.filter(Plant.archived_on.isnot(None)).order_by(Plant.name.asc()).all()
-    locations = [row[0] for row in db.session.query(Plant.location).filter(Plant.location.isnot(None), Plant.location != '').distinct().all()]
     care_summaries = {plant.id: _plant_care_summary(plant) for plant in plants}
     today = date.today()
     return render_template(
@@ -225,9 +220,7 @@ def add_page():
         archived_plants=archived_plants,
         active_page='add',
         care_summaries=care_summaries,
-        locations=locations,
-        location_filter=location_filter,
-        view_mode=view_mode,
+        view_mode=view_mode if view_mode in {'manage', 'overview'} else 'manage',
         today=today,
     )
 
