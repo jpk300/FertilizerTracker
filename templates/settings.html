@@ -25,12 +25,12 @@
 
     <label>SMTP username</label>
     <input name="smtp_user" value="{{ settings.smtp_user or '' }}" />
-    <label>SMTP password</label>
-    <input name="smtp_password" type="password" value="{{ settings.smtp_password or '' }}" />
+    <p class="small">SMTP password is loaded from the <code>SMTP_PASSWORD</code> environment variable and is never stored in the application database.</p>
 
     <label>Connection security</label>
     <select name="smtp_security">
-      <option value="tls_if_available" {% if (settings.smtp_security or 'tls_if_available') == 'tls_if_available' %}selected{% endif %}>Use SSL/TLS if server supports it</option>
+      <option value="require_tls" {% if (settings.smtp_security or 'require_tls') == 'require_tls' %}selected{% endif %}>Require SSL/TLS (recommended)</option>
+      <option value="tls_if_available" {% if settings.smtp_security == 'tls_if_available' %}selected{% endif %}>Use SSL/TLS if server supports it</option>
       <option value="none" {% if settings.smtp_security == 'none' %}selected{% endif %}>Do not use connection security</option>
     </select>
 

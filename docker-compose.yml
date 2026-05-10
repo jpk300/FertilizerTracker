@@ -4,10 +4,12 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - SECRET_KEY=change-me
+      - SECRET_KEY=change-me-to-a-random-long-string
+      - APP_USERNAME=admin
+      - APP_PASSWORD=change-me
       - DATABASE_URL=sqlite:////data/plants.db
-      - NOTIFY_EMAIL_TO=jason.kayser@gmail.com
-      - NOTIFY_EMAIL_FROM=plants@home.local
+      - NOTIFY_EMAIL_TO=notify@example.com
+      - NOTIFY_EMAIL_FROM=plants@example.com
       - SMTP_HOST=smtp.example.com
       - SMTP_PORT=587
       - SMTP_USER=you@example.com
@@ -18,6 +20,9 @@ services:
   mailer:
     build: .
     environment:
+      - SECRET_KEY=change-me-to-a-random-long-string
+      - APP_USERNAME=admin
+      - APP_PASSWORD=change-me
       - DATABASE_URL=sqlite:////data/plants.db
       - SEND_DUE_EMAIL=1
       - NOTIFY_EMAIL_TO=you@example.com
