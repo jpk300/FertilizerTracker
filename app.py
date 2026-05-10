@@ -1,19 +1,47 @@
 from datetime import datetime, date, timedelta
+from functools import wraps
+import secrets
 import os
 import uuid
 import smtplib
+import logging
+import ssl
 from email.message import EmailMessage
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, abort, g
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text
+from PIL import Image, UnidentifiedImageError
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret')
+_secret = os.getenv('SECRET_KEY')
+if not _secret:
+    raise RuntimeError('SECRET_KEY environment variable must be set.')
+app.config['SECRET_KEY'] = _secret
+app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_CONTENT_LENGTH', str(5 * 1024 * 1024)))
 default_db_path = os.path.join(app.root_path, 'data', 'plants.db')
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', f"sqlite:///{default_db_path}")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
+logger = logging.getLogger(__name__)
+
+
+def _auth_config() -> tuple[str | None, str | None]:
+    return os.getenv('APP_USERNAME'), os.getenv('APP_PASSWORD')
+
+
+def _is_authenticated() -> bool:
+    return bool(session.get('authenticated'))
+
+
+def login_required(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if not _is_authenticated():
+            flash('Please log in.')
+            return redirect(url_for('login_page', next=request.path))
+        return view(*args, **kwargs)
+    return wrapped
 
 def _ensure_sqlite_directory() -> None:
     uri = app.config.get('SQLALCHEMY_DATABASE_URI', '')
@@ -123,6 +151,13 @@ def _save_uploaded_image(image):
     os.makedirs(upload_dir, exist_ok=True)
     filename = f"{uuid.uuid4().hex}{ext}"
     save_path = os.path.join(upload_dir, filename)
+    image.stream.seek(0)
+    try:
+        with Image.open(image.stream) as uploaded:
+            uploaded.verify()
+    except (UnidentifiedImageError, OSError):
+        return None
+    image.stream.seek(0)
     image.save(save_path)
     return f'uploads/{filename}'
 
@@ -159,26 +194,34 @@ def _smtp_config_from_settings(settings: AppSettings) -> dict:
         'smtp_host': settings.smtp_host or os.getenv('SMTP_HOST'),
         'smtp_port': int(settings.smtp_port or os.getenv('SMTP_PORT', '587')),
         'smtp_user': settings.smtp_user or os.getenv('SMTP_USER'),
-        'smtp_password': settings.smtp_password or os.getenv('SMTP_PASSWORD'),
+        'smtp_password': os.getenv('SMTP_PASSWORD'),
         'smtp_sender_name': settings.smtp_sender_name or os.getenv('SMTP_SENDER_NAME', ''),
         'smtp_helo_ident': settings.smtp_helo_ident or os.getenv('SMTP_HELO_IDENT', ''),
         'smtp_auth_mode': settings.smtp_auth_mode or os.getenv('SMTP_AUTH_MODE', 'none'),
-        'smtp_security': settings.smtp_security or os.getenv('SMTP_SECURITY', 'tls_if_available'),
+        'smtp_security': settings.smtp_security or os.getenv('SMTP_SECURITY', 'require_tls'),
+        'smtp_tls_method': settings.smtp_tls_method or os.getenv('SMTP_TLS_METHOD', 'tls1_2'),
     }
 
 
 def _send_email_with_config(config: dict, msg: EmailMessage) -> None:
+    context = ssl.create_default_context()
+    if config['smtp_tls_method'] == 'tls1_3':
+        context.minimum_version = ssl.TLSVersion.TLSv1_3
+    else:
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
     with smtplib.SMTP(
         config['smtp_host'],
         config['smtp_port'],
         timeout=20,
         local_hostname=config['smtp_helo_ident'] or None,
     ) as server:
-        if config['smtp_security'] == 'tls_if_available':
+        if config['smtp_security'] in {'tls_if_available', 'require_tls'}:
             server.ehlo()
             if server.has_extn('starttls'):
-                server.starttls()
+                server.starttls(context=context)
                 server.ehlo()
+            elif config['smtp_security'] == 'require_tls':
+                raise RuntimeError('SMTP server does not support STARTTLS and TLS is required.')
         if config['smtp_auth_mode'] != 'none':
             server.login(config['smtp_user'], config['smtp_password'])
         server.send_message(msg)
@@ -200,6 +243,42 @@ def _initialize_database() -> None:
 @app.before_request
 def _initialize_database_before_request():
     _initialize_database()
+    if request.endpoint == 'static':
+        return
+    if request.endpoint not in {'login_page'} and not _is_authenticated():
+        return redirect(url_for('login_page', next=request.path))
+    if request.method in {'POST', 'PUT', 'PATCH', 'DELETE'} and request.endpoint != 'login_page':
+        token = request.form.get('_csrf_token') or request.headers.get('X-CSRF-Token')
+        if not token or token != session.get('_csrf_token'):
+            abort(400, description='Invalid CSRF token.')
+
+
+@app.context_processor
+def _inject_csrf_token():
+    token = session.get('_csrf_token')
+    if not token:
+        token = secrets.token_urlsafe(32)
+        session['_csrf_token'] = token
+    return {'csrf_token': token}
+
+
+@app.route('/login', methods=['GET', 'POST'])
+def login_page():
+    if request.method == 'POST':
+        username, password = _auth_config()
+        if not username or not password:
+            abort(500, description='APP_USERNAME and APP_PASSWORD must be configured.')
+        if request.form.get('username') == username and request.form.get('password') == password:
+            session['authenticated'] = True
+            return redirect(request.args.get('next') or url_for('upcoming_page'))
+        flash('Invalid credentials.')
+    return render_template('login.html', active_page='login')
+
+
+@app.post('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login_page'))
 
 
 @app.route('/')
@@ -234,7 +313,6 @@ def settings_page():
         settings.smtp_host = request.form.get('smtp_host', '').strip()
         settings.smtp_port = int(request.form.get('smtp_port', '587') or '587')
         settings.smtp_user = request.form.get('smtp_user', '').strip()
-        settings.smtp_password = request.form.get('smtp_password', '').strip()
         settings.smtp_sender_name = request.form.get('smtp_sender_name', '').strip()
         settings.smtp_helo_ident = request.form.get('smtp_helo_ident', '').strip()
         settings.smtp_auth_mode = request.form.get('smtp_auth_mode', 'none').strip() or 'none'
@@ -269,7 +347,8 @@ def test_settings_email():
     try:
         _send_email_with_config(config, msg)
     except Exception as exc:
-        flash(f'Test email failed: {exc}')
+        logger.exception('Test email failed')
+        flash('Test email failed. Check server logs for details.')
         return redirect(url_for('settings_page'))
 
     flash(f"Test email sent to {config['to_addr']}.")
@@ -469,6 +548,7 @@ def delete_task(task_id: int):
 
 
 @app.get('/export')
+@login_required
 def export_data():
     plants = []
     for p in Plant.query.order_by(Plant.id.asc()).all():
@@ -483,17 +563,31 @@ def export_data():
 
 
 @app.post('/import')
+@login_required
 def import_data():
     payload = request.get_json(silent=True) or {}
-    for item in payload.get('plants', []):
-        plant = Plant(name=item.get('name', 'Unnamed plant'), location=item.get('location'), notes=item.get('notes'), image_path=item.get('image_path'))
-        db.session.add(plant)
-        db.session.flush()
-        for t in item.get('tasks', []):
-            db.session.add(Task(plant_id=plant.id, activity=t['activity'], due_date=datetime.strptime(t['due_date'], '%Y-%m-%d').date(), completed_on=datetime.strptime(t['completed_on'], '%Y-%m-%d').date() if t.get('completed_on') else None, recurrence_days=t.get('recurrence_days')))
-        for ph in item.get('photos', []):
-            db.session.add(PlantPhoto(plant_id=plant.id, image_path=ph['image_path'], note=ph.get('note'), taken_on=datetime.strptime(ph['taken_on'], '%Y-%m-%d').date()))
-    db.session.commit()
+    plants_payload = payload.get('plants', [])
+    if not isinstance(plants_payload, list) or len(plants_payload) > 500:
+        abort(400, description='Invalid import payload.')
+    try:
+        for item in plants_payload:
+            if not isinstance(item, dict):
+                raise ValueError('Invalid plant object')
+            plant = Plant(name=(item.get('name') or 'Unnamed plant')[:120], location=item.get('location'), notes=item.get('notes'), image_path=item.get('image_path'))
+            db.session.add(plant)
+            db.session.flush()
+            for t in item.get('tasks', [])[:2000]:
+                if not t.get('activity') or not t.get('due_date'):
+                    raise ValueError('Task missing required fields')
+                db.session.add(Task(plant_id=plant.id, activity=t['activity'][:120], due_date=datetime.strptime(t['due_date'], '%Y-%m-%d').date(), completed_on=datetime.strptime(t['completed_on'], '%Y-%m-%d').date() if t.get('completed_on') else None, recurrence_days=t.get('recurrence_days')))
+            for ph in item.get('photos', [])[:2000]:
+                if not ph.get('image_path') or not ph.get('taken_on'):
+                    raise ValueError('Photo missing required fields')
+                db.session.add(PlantPhoto(plant_id=plant.id, image_path=ph['image_path'], note=ph.get('note'), taken_on=datetime.strptime(ph['taken_on'], '%Y-%m-%d').date()))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
     return {'ok': True}
 
 

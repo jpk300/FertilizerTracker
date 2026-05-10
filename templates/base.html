@@ -143,6 +143,12 @@
         <a class="{{ 'active' if active_page == 'upcoming' else '' }}" href="{{ url_for('upcoming_page') }}">Upcoming & History</a>
         <a class="{{ 'active' if active_page == 'add' else '' }}" href="{{ url_for('add_page') }}">Add Plants & Activities</a>
         <a class="{{ 'active' if active_page == 'settings' else '' }}" href="{{ url_for('settings_page') }}">Settings</a>
+        {% if session.get('authenticated') %}
+        <form method="post" action="{{ url_for('logout') }}" style="display:inline;">
+          <input type="hidden" name="_csrf_token" value="{{ csrf_token }}" />
+          <button type="submit" class="btn btn-secondary" style="width:auto; padding:.45rem .75rem; margin:0;">Logout</button>
+        </form>
+        {% endif %}
       </nav>
     </div>
 
@@ -152,5 +158,16 @@
 
     {% block content %}{% endblock %}
   </div>
+  <script>
+    document.querySelectorAll('form[method="post"]').forEach((form) => {
+      if (!form.querySelector('input[name="_csrf_token"]')) {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = '_csrf_token';
+        input.value = '{{ csrf_token }}';
+        form.appendChild(input);
+      }
+    });
+  </script>
 </body>
 </html>
