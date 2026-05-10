@@ -3,6 +3,7 @@ services:
     build: .
     ports:
       - "8000:8000"
+    restart: unless-stopped
     environment:
       - SECRET_KEY=change-me
       - DATABASE_URL=sqlite:////data/plants.db
