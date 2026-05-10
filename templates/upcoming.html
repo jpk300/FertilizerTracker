@@ -11,4 +11,38 @@
 <div class="task {{ 'overdue' if task.due_date <= today else '' }}"><strong>{{ task.plant.name }}</strong> — {{ task.activity }}<div class="small">Due {{ task.due_date.isoformat() }}</div><form method="post" action="{{ url_for('complete_task', task_id=task.id) }}"><button type="submit">Mark Complete</button></form></div>
 {% else %}<p class="muted">No upcoming activities.</p>{% endfor %}
 </div>
+
+<div class="card">
+<h2>Completed History ({{ completed_count }})</h2>
+<p class="small">Completed in last 7 days: <strong>{{ completed_last_week }}</strong></p>
+<form method="get" action="{{ url_for('upcoming_page') }}" class="grid">
+  <div>
+    <label for="history_range">History window</label>
+    <select id="history_range" name="history_range">
+      <option value="7" {{ 'selected' if history_range == '7' else '' }}>Last 7 days</option>
+      <option value="30" {{ 'selected' if history_range == '30' else '' }}>Last 30 days</option>
+      <option value="90" {{ 'selected' if history_range == '90' else '' }}>Last 90 days</option>
+      <option value="all" {{ 'selected' if history_range == 'all' else '' }}>All time</option>
+    </select>
+  </div>
+  <div>
+    <label for="history_plant">Plant</label>
+    <select id="history_plant" name="history_plant">
+      <option value="all" {{ 'selected' if history_plant == 'all' else '' }}>All plants</option>
+      {% for plant in plants %}
+      <option value="{{ plant.id }}" {{ 'selected' if history_plant == plant.id|string else '' }}>{{ plant.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <input type="hidden" name="status" value="{{ status_filter }}" />
+  <div style="grid-column:1 / -1;"><button type="submit">Apply History Filters</button></div>
+</form>
+
+{% for task in completed_tasks %}
+<div class="task">
+  <strong>{{ task.plant.name }}</strong> — {{ task.activity }}
+  <div class="small">Completed {{ task.completed_on.isoformat() }} · Was due {{ task.due_date.isoformat() }}</div>
+</div>
+{% else %}<p class="muted">No completed activities in this filter range.</p>{% endfor %}
+</div>
 {% endblock %}

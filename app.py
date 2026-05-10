@@ -279,6 +279,8 @@ def test_settings_email():
 @app.route('/upcoming')
 def upcoming_page():
     status_filter = request.args.get('status', '').strip()
+    history_range = request.args.get('history_range', '30').strip()
+    history_plant = request.args.get('history_plant', 'all').strip()
     open_tasks_query = Task.query.filter(
         Task.plant.has(Plant.archived_on.is_(None)),
         Task.completed_on.is_(None),
@@ -291,8 +293,36 @@ def upcoming_page():
     elif status_filter == 'overdue':
         open_tasks_query = open_tasks_query.filter(Task.due_date < today)
     open_tasks = open_tasks_query.order_by(Task.due_date.asc()).all()
+
+    completed_tasks_query = Task.query.join(Plant).filter(Task.completed_on.isnot(None))
+    if history_plant != 'all' and history_plant.isdigit():
+        completed_tasks_query = completed_tasks_query.filter(Task.plant_id == int(history_plant))
+    if history_range != 'all':
+        try:
+            days_back = int(history_range)
+            completed_tasks_query = completed_tasks_query.filter(Task.completed_on >= today - timedelta(days=days_back))
+        except ValueError:
+            history_range = '30'
+            completed_tasks_query = completed_tasks_query.filter(Task.completed_on >= today - timedelta(days=30))
+    completed_tasks = completed_tasks_query.order_by(Task.completed_on.desc(), Task.due_date.desc()).all()
+
+    completed_count = len(completed_tasks)
+    recent_window_start = today - timedelta(days=7)
+    completed_last_week = sum(1 for t in completed_tasks if t.completed_on and t.completed_on >= recent_window_start)
     plants = Plant.query.order_by(Plant.name.asc()).all()
-    return render_template('upcoming.html', plants=plants, open_tasks=open_tasks, today=today, active_page='upcoming', status_filter=status_filter)
+    return render_template(
+        'upcoming.html',
+        plants=plants,
+        open_tasks=open_tasks,
+        completed_tasks=completed_tasks,
+        completed_count=completed_count,
+        completed_last_week=completed_last_week,
+        today=today,
+        active_page='upcoming',
+        status_filter=status_filter,
+        history_range=history_range,
+        history_plant=history_plant,
+    )
 
 
 @app.post('/plants/<int:plant_id>/archive')
