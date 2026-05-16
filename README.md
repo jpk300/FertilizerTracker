@@ -1,35 +1,118 @@
 # FertilizerTracker
 
-A lightweight Flask web app for tracking outdoor plant upkeep tasks (fertilize, prune, mulch, etc.) with due-date reminders by email.
+FertilizerTracker is a lightweight Flask app for tracking plant care with due dates, recurring tasks, photos, reminders, and basic account protection.
 
-## Features
-- Add plants with location/notes.
-- Schedule maintenance activities with due dates.
-- See overdue/due tasks on the dashboard.
-- Mark tasks complete.
-- Send email reminders for due tasks.
+## What the app does
 
-## Run on Linux with Docker
+- Create and manage plants with:
+  - Name, location, notes
+  - Optional cover photo
+  - Optional growth timeline photos with note + date
+- Create care tasks per plant:
+  - Activity name
+  - Due date
+  - Optional start/end window
+  - Optional recurrence (daily, weekly, biweekly, monthly)
+  - Optional email reminder timing (on due date or after due date)
+- Complete tasks:
+  - One-time tasks are marked complete
+  - Recurring tasks automatically create the next occurrence (if still inside the configured date window)
+- Archive plants while preserving task/photo history
+- Review upcoming tasks on a dedicated view
+- Configure SMTP and notification addresses from the in-app Settings page
+- Send a test email from Settings
+- Export/import JSON backups from built-in API endpoints
+
+## Security and reliability updates included
+
+- Login protection using `APP_USERNAME` and `APP_PASSWORD`
+- Session secret is required (`SECRET_KEY`)
+- CSRF validation for all state-changing requests
+- Upload validation for image file types and image integrity checks
+- Maximum upload size controlled by `MAX_CONTENT_LENGTH`
+- SQLite auto-migration helpers add newly introduced columns on startup
+
+## Quick start (Docker)
+
+1. Set required environment values (example):
+
+```bash
+export SECRET_KEY='replace-with-a-long-random-value'
+export APP_USERNAME='admin'
+export APP_PASSWORD='change-me'
+export SMTP_PASSWORD='smtp-password-if-needed'
+```
+
+2. Start the app:
+
 ```bash
 docker compose up --build -d
 ```
 
-Then open from your phone or any device on the same network:
+3. Open it on your LAN:
+
 - `http://<your-linux-server-ip>:8000`
 
+## Environment variables
+
+### Required
+
+- `SECRET_KEY` - Flask session/signing secret
+- `APP_USERNAME` - login username
+- `APP_PASSWORD` - login password
+
+### Optional
+
+- `DATABASE_URL` - defaults to local SQLite file in `data/plants.db`
+- `MAX_CONTENT_LENGTH` - max upload payload in bytes (default `5242880`, 5 MB)
+
+### Optional email defaults/fallbacks
+
+Settings page values are used first; if blank, these env vars are used:
+
+- `NOTIFY_EMAIL_TO`
+- `NOTIFY_EMAIL_FROM`
+- `SMTP_HOST`
+- `SMTP_PORT` (default `587`)
+- `SMTP_USER`
+- `SMTP_PASSWORD` (kept only in env, never stored in DB)
+- `SMTP_SENDER_NAME`
+- `SMTP_HELO_IDENT`
+- `SMTP_AUTH_MODE`
+- `SMTP_SECURITY`
+- `SMTP_TLS_METHOD`
+
 ## Email reminders
-1. Edit SMTP values in `docker-compose.yml`.
-2. Run reminder job (manual trigger):
+
+### Configure in-app
+
+Use **Settings** to configure SMTP host, auth mode, TLS behavior, sender, and recipients. Use **Send Test Email** to verify connectivity.
+
+### Run reminder job manually
+
 ```bash
 docker compose run --rm --profile email mailer
 ```
 
-### Optional cron (daily at 7 AM)
-On host server:
+### Optional cron (daily 7 AM)
+
 ```bash
 0 7 * * * cd /path/to/FertilizerTracker && docker compose run --rm --profile email mailer >> /var/log/fertilizer-tracker-mail.log 2>&1
 ```
 
-## Notes
-- Data is persisted at `./data/plants.db`.
-- For internet/mobile access from outside your LAN, place behind reverse proxy + TLS.
+## Data and files
+
+- SQLite database persists at `./data/plants.db`
+- Uploaded photos are stored under `./static/uploads`
+- Plant archive keeps historical records instead of deleting active history
+
+## Developer notes
+
+- App initializes schema at runtime and applies compatible SQLite column additions automatically.
+- API backup endpoints:
+  - `GET /api/export`
+  - `POST /api/import`
+
+## Network exposure note
+
+If you need internet access beyond your LAN, place the app behind a reverse proxy with TLS.

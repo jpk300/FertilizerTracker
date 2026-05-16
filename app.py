@@ -1,4 +1,4 @@
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, UTC
 from functools import wraps
 import secrets
 import os
@@ -341,11 +341,15 @@ def test_settings_email():
     msg['To'] = config['to_addr']
     msg.set_content(
         'This is a test email from FertilizerTracker settings.\n'
-        f"Sent at {datetime.utcnow().isoformat()}Z."
+        f"Sent at {datetime.now(UTC).isoformat()}."
     )
 
     try:
         _send_email_with_config(config, msg)
+    except ssl.SSLCertVerificationError:
+        logger.exception('Test email failed due to certificate verification')
+        flash('Test email failed: TLS certificate verification failed. Trust the SMTP certificate/CA in the app container or adjust SMTP security settings.')
+        return redirect(url_for('settings_page'))
     except Exception as exc:
         logger.exception('Test email failed')
         flash('Test email failed. Check server logs for details.')
