@@ -350,11 +350,6 @@ def test_settings_email():
         logger.exception('Test email failed due to certificate verification')
         flash('Test email failed: TLS certificate verification failed. Trust the SMTP certificate/CA in the app container or adjust SMTP security settings.')
         return redirect(url_for('settings_page'))
-    except smtplib.SMTPRecipientsRefused as exc:
-        logger.exception('Test email failed due to recipient rejection')
-        refused = ', '.join(exc.recipients.keys()) if getattr(exc, 'recipients', None) else config['to_addr']
-        flash(f'Test email failed: recipient rejected by SMTP server ({refused}). Check relay permissions, sender/recipient policy, and SMTP auth settings.')
-        return redirect(url_for('settings_page'))
     except Exception as exc:
         logger.exception('Test email failed')
         flash('Test email failed. Check server logs for details.')
