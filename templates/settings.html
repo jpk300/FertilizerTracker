@@ -25,7 +25,9 @@
 
     <label>SMTP username</label>
     <input name="smtp_user" value="{{ settings.smtp_user or '' }}" />
-    <p class="small">SMTP password is loaded from the <code>SMTP_PASSWORD</code> environment variable and is never stored in the application database.</p>
+    <label>SMTP password (optional)</label>
+    <input name="smtp_password" type="password" autocomplete="new-password" />
+    <p class="small">Password is not stored in the application database. If provided here, it is written to the app's <code>.env</code> file as <code>SMTP_PASSWORD</code>.</p>
 
     <label>Connection security</label>
     <select name="smtp_security">
@@ -48,6 +50,6 @@
       <button type="submit" formaction="{{ url_for('test_settings_email') }}" formmethod="post" class="btn-secondary">Send Test Email</button>
     </div>
   </form>
-  <p class="small">These values override environment variables when provided.</p>
+  <p class="small">These values are primary for app SMTP behavior and are also written to <code>.env</code> to keep container/env runs aligned.</p>
 </div>
 {% endblock %}

@@ -1,4 +1,4 @@
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, UTC
 from functools import wraps
 import secrets
 import os
@@ -203,6 +203,23 @@ def _smtp_config_from_settings(settings: AppSettings) -> dict:
     }
 
 
+def _persist_smtp_env_updates(updates: dict[str, str]) -> None:
+    env_path = os.path.join(app.root_path, '.env')
+    existing: dict[str, str] = {}
+    if os.path.exists(env_path):
+        with open(env_path, 'r', encoding='utf-8') as f:
+            for raw_line in f:
+                line = raw_line.strip()
+                if not line or line.startswith('#') or '=' not in line:
+                    continue
+                key, value = line.split('=', 1)
+                existing[key.strip()] = value
+    existing.update(updates)
+    with open(env_path, 'w', encoding='utf-8') as f:
+        for key in sorted(existing.keys()):
+            f.write(f'{key}={existing[key]}\n')
+
+
 def _send_email_with_config(config: dict, msg: EmailMessage) -> None:
     context = ssl.create_default_context()
     if config['smtp_tls_method'] == 'tls1_3':
@@ -318,7 +335,24 @@ def settings_page():
         settings.smtp_auth_mode = request.form.get('smtp_auth_mode', 'none').strip() or 'none'
         settings.smtp_security = request.form.get('smtp_security', 'tls_if_available').strip() or 'tls_if_available'
         settings.smtp_tls_method = request.form.get('smtp_tls_method', 'auto').strip() or 'auto'
+        smtp_password = request.form.get('smtp_password', '').strip()
         db.session.commit()
+        env_updates = {
+            'NOTIFY_EMAIL_TO': settings.notify_email_to,
+            'NOTIFY_EMAIL_FROM': settings.notify_email_from,
+            'SMTP_HOST': settings.smtp_host,
+            'SMTP_PORT': str(settings.smtp_port or 587),
+            'SMTP_USER': settings.smtp_user,
+            'SMTP_SENDER_NAME': settings.smtp_sender_name,
+            'SMTP_HELO_IDENT': settings.smtp_helo_ident,
+            'SMTP_AUTH_MODE': settings.smtp_auth_mode,
+            'SMTP_SECURITY': settings.smtp_security,
+            'SMTP_TLS_METHOD': settings.smtp_tls_method,
+        }
+        if smtp_password:
+            env_updates['SMTP_PASSWORD'] = smtp_password
+            os.environ['SMTP_PASSWORD'] = smtp_password
+        _persist_smtp_env_updates(env_updates)
         flash('Settings saved.')
         return redirect(url_for('settings_page'))
     return render_template('settings.html', settings=settings, active_page='settings')
@@ -341,11 +375,20 @@ def test_settings_email():
     msg['To'] = config['to_addr']
     msg.set_content(
         'This is a test email from FertilizerTracker settings.\n'
-        f"Sent at {datetime.utcnow().isoformat()}Z."
+        f"Sent at {datetime.now(UTC).isoformat()}."
     )
 
     try:
         _send_email_with_config(config, msg)
+    except ssl.SSLCertVerificationError:
+        logger.exception('Test email failed due to certificate verification')
+        flash('Test email failed: TLS certificate verification failed. Trust the SMTP certificate/CA in the app container or adjust SMTP security settings.')
+        return redirect(url_for('settings_page'))
+    except smtplib.SMTPRecipientsRefused as exc:
+        logger.exception('Test email failed due to recipient rejection')
+        refused = ', '.join(exc.recipients.keys()) if getattr(exc, 'recipients', None) else config['to_addr']
+        flash(f'Test email failed: recipient rejected by SMTP server ({refused}). Check relay permissions, sender/recipient policy, and SMTP auth settings.')
+        return redirect(url_for('settings_page'))
     except Exception as exc:
         logger.exception('Test email failed')
         flash('Test email failed. Check server logs for details.')
