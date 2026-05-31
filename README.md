@@ -91,13 +91,21 @@ Use **Settings** to configure SMTP host, auth mode, TLS behavior, sender, and re
 ### Run reminder job manually
 
 ```bash
-docker compose run --rm --profile email mailer
+docker compose --profile email run --rm mailer
 ```
 
 ### Optional cron (daily 7 AM)
 
 ```bash
-0 7 * * * cd /path/to/FertilizerTracker && docker compose run --rm --profile email mailer >> /var/log/fertilizer-tracker-mail.log 2>&1
+0 7 * * * cd /path/to/FertilizerTracker && docker compose --profile email run --rm mailer >> "$HOME/fertilizer-tracker-mail.log" 2>&1
+```
+
+The cron job runs as the user who owns the crontab. Keep the log file in a location that user can write to, such as `$HOME`. Writing directly to `/var/log` requires separate administrator setup and will prevent the reminder command from running if permission is denied.
+
+After adding the cron entry, confirm the scheduled run with:
+
+```bash
+tail -n 100 "$HOME/fertilizer-tracker-mail.log"
 ```
 
 ## Data and files

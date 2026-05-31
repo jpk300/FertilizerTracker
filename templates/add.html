@@ -63,7 +63,15 @@
 </div>
 {% if plant.photos %}<div class="small">Timeline:</div>{% for photo in (plant.photos|sort(attribute='taken_on', reverse=True))[:5] %}<img src="{{ url_for('static', filename=photo.image_path) }}" class="plant-photo" title="{{ photo.taken_on.isoformat() }} {{ photo.note or '' }}" />{% endfor %}{% endif %}
 <hr style="border:0; border-top:1px solid #d9e8da; margin:.8rem 0;" />
-<h3>Schedule Activity</h3>
+<details class="task task-collapsible">
+  <summary>
+    <div class="summary-main">
+      <strong>Schedule Activity</strong>
+    </div>
+    <span class="summary-toggle" aria-hidden="true"></span>
+    <div class="small">Add a new scheduled activity for {{ plant.name }}.</div>
+  </summary>
+  <div class="task-content">
 <form method="post" action="{{ url_for('add_task') }}">
   <input type="hidden" name="plant_id" value="{{ plant.id }}" />
   <label for="activity-new-{{ plant.id }}">Activity</label><input id="activity-new-{{ plant.id }}" name="activity" placeholder="Water, fertilize, prune..." required />
@@ -83,9 +91,19 @@
   </select>
   <button type="submit">Add scheduled activity</button>
 </form>
+  </div>
+</details>
 <h3>Scheduled Activities</h3>
 {% for task in plant.tasks if task.completed_on is none %}
-<div class="task {{ 'overdue' if task.due_date < today else '' }}">
+<details class="task task-collapsible {{ 'overdue' if task.due_date < today else '' }}">
+  <summary>
+    <div class="summary-main">
+      <strong>{{ task.activity }}</strong>
+    </div>
+    <span class="summary-toggle" aria-hidden="true"></span>
+    <div class="small">Due {{ task.due_date.isoformat() }}{% if task.recurrence_days %} · Repeats every {{ task.recurrence_days }} day{{ '' if task.recurrence_days == 1 else 's' }}{% endif %}</div>
+  </summary>
+  <div class="task-content">
   <form method="post" action="{{ url_for('edit_task', task_id=task.id) }}">
     <label for="activity-{{ task.id }}">Activity</label><input id="activity-{{ task.id }}" name="activity" value="{{ task.activity }}" required />
     <label for="due-{{ task.id }}">Due date</label><input id="due-{{ task.id }}" name="due_date" type="date" value="{{ task.due_date.isoformat() }}" required />
@@ -109,7 +127,8 @@
       <button type="submit" class="btn btn-delete">Delete</button>
   </form>
     </div>
-</div>
+  </div>
+</details>
 {% else %}
 <p class="muted">No scheduled activities yet.</p>
 {% endfor %}
