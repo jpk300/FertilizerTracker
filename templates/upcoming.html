@@ -8,7 +8,14 @@
 <a href="{{ url_for('upcoming_page', status='overdue') }}">Overdue</a>
 </div>
 {% for task in open_tasks %}
-<div class="task {{ 'overdue' if task.due_date <= today else '' }}"><strong>{{ task.plant.name }}</strong> — {{ task.activity }}<div class="small">Due {{ task.due_date.isoformat() }}</div><form method="post" action="{{ url_for('complete_task', task_id=task.id) }}"><button type="submit">Mark Complete</button></form></div>
+<div class="task {{ 'overdue' if task.due_date <= today else '' }}">
+  <strong>{{ task.plant.name }}</strong> — {{ task.activity }}
+  <div class="small">Due {{ task.due_date.isoformat() }}</div>
+  {% if task.plant.notes %}
+  <div class="task-notes"><strong>Notes:</strong> {{ task.plant.notes }}</div>
+  {% endif %}
+  <form method="post" action="{{ url_for('complete_task', task_id=task.id) }}"><button type="submit">Mark Complete</button></form>
+</div>
 {% else %}<p class="muted">No upcoming activities.</p>{% endfor %}
 </div>
 
