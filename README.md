@@ -1,6 +1,6 @@
 # FertilizerTracker
 
-FertilizerTracker is a lightweight Flask app for tracking plant care with due dates, recurring tasks, photos, reminders, and basic account protection.
+FertilizerTracker is a lightweight Flask app for tracking plant care with due dates, recurring tasks, photos, and reminders.
 
 ## What the app does
 
@@ -25,7 +25,6 @@ FertilizerTracker is a lightweight Flask app for tracking plant care with due da
 
 ## Security and reliability updates included
 
-- Login protection using `APP_USERNAME` and `APP_PASSWORD`
 - Session secret is required (`SECRET_KEY`)
 - CSRF validation for all state-changing requests
 - Upload validation for image file types and image integrity checks
@@ -38,8 +37,6 @@ FertilizerTracker is a lightweight Flask app for tracking plant care with due da
 
 ```bash
 export SECRET_KEY='replace-with-a-long-random-value'
-export APP_USERNAME='admin'
-export APP_PASSWORD='change-me'
 export SMTP_PASSWORD='smtp-password-if-needed'
 ```
 
@@ -58,8 +55,6 @@ docker compose up --build -d
 ### Required
 
 - `SECRET_KEY` - Flask session/signing secret
-- `APP_USERNAME` - login username
-- `APP_PASSWORD` - login password
 
 ### Optional
 

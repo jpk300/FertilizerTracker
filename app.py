@@ -1,5 +1,4 @@
 from datetime import datetime, date, timedelta, UTC
-from functools import wraps
 import secrets
 import os
 import uuid
@@ -25,23 +24,6 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 logger = logging.getLogger(__name__)
 
-
-def _auth_config() -> tuple[str | None, str | None]:
-    return os.getenv('APP_USERNAME'), os.getenv('APP_PASSWORD')
-
-
-def _is_authenticated() -> bool:
-    return bool(session.get('authenticated'))
-
-
-def login_required(view):
-    @wraps(view)
-    def wrapped(*args, **kwargs):
-        if not _is_authenticated():
-            flash('Please log in.')
-            return redirect(url_for('login_page', next=request.path))
-        return view(*args, **kwargs)
-    return wrapped
 
 def _ensure_sqlite_directory() -> None:
     uri = app.config.get('SQLALCHEMY_DATABASE_URI', '')
@@ -262,9 +244,7 @@ def _initialize_database_before_request():
     _initialize_database()
     if request.endpoint == 'static':
         return
-    if request.endpoint not in {'login_page'} and not _is_authenticated():
-        return redirect(url_for('login_page', next=request.path))
-    if request.method in {'POST', 'PUT', 'PATCH', 'DELETE'} and request.endpoint != 'login_page':
+    if request.method in {'POST', 'PUT', 'PATCH', 'DELETE'}:
         token = request.form.get('_csrf_token') or request.headers.get('X-CSRF-Token')
         if not token or token != session.get('_csrf_token'):
             abort(400, description='Invalid CSRF token.')
@@ -277,25 +257,6 @@ def _inject_csrf_token():
         token = secrets.token_urlsafe(32)
         session['_csrf_token'] = token
     return {'csrf_token': token}
-
-
-@app.route('/login', methods=['GET', 'POST'])
-def login_page():
-    if request.method == 'POST':
-        username, password = _auth_config()
-        if not username or not password:
-            abort(500, description='APP_USERNAME and APP_PASSWORD must be configured.')
-        if request.form.get('username') == username and request.form.get('password') == password:
-            session['authenticated'] = True
-            return redirect(request.args.get('next') or url_for('upcoming_page'))
-        flash('Invalid credentials.')
-    return render_template('login.html', active_page='login')
-
-
-@app.post('/logout')
-def logout():
-    session.clear()
-    return redirect(url_for('login_page'))
 
 
 @app.route('/')
@@ -591,7 +552,6 @@ def delete_task(task_id: int):
 
 
 @app.get('/export')
-@login_required
 def export_data():
     plants = []
     for p in Plant.query.order_by(Plant.id.asc()).all():
@@ -606,7 +566,6 @@ def export_data():
 
 
 @app.post('/import')
-@login_required
 def import_data():
     payload = request.get_json(silent=True) or {}
     plants_payload = payload.get('plants', [])
